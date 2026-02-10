@@ -1,0 +1,22 @@
+# Browser-Automatisierung
+playwright>=1.49.0
+crawl4ai>=0.4.248
+
+# Google Sheets API
+google-auth==2.35.0
+google-auth-oauthlib==1.2.1
+google-auth-httplib2==0.2.0
+google-api-python-client==2.149.0
+
+# Config & Umgebungsvariablen
+pyyaml==6.0.2
+python-dotenv==1.0.1
+
+# Utilities
+python-dateutil==2.9.0
+
+# HTML Parsing für Crawl4AI
+beautifulsoup4==4.12.3
+
+# HTTP Requests für Serper API
+requests==2.32.3

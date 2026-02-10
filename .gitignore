@@ -1,0 +1,34 @@
+# Environment
+.env
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Google API
+token.json
+credentials.json
+
+# Logs
+*.log
+logs/
+
+# Rate Limiter State
+rate_limiter_state.json
+
+# Playwright & Browser Data
+.playwright/
+browser_data/
+linkedin_state/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

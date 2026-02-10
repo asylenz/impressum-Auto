@@ -1,0 +1,97 @@
+# Tecis-Bot Konfiguration
+
+# Rate-Limits (pro Plattform)
+limits:
+  linkedin:
+    max_profiles_per_day: 150
+    max_profiles_per_hour: 13
+    delay_between_requests_min: 0
+    delay_between_requests_max: 0
+    pause_after_n_profiles: 20
+    pause_duration: 300
+
+  xing:
+    max_profiles_per_hour: 30
+    delay_between_requests_min: 2
+    delay_between_requests_max: 5
+
+  tecis:
+    delay_between_requests_min: 1
+    delay_between_requests_max: 3
+
+  google_search:
+    delay_between_requests_min: 1
+    delay_between_requests_max: 5
+
+# Gültige Stufen (Appendix B - In Scope / Zielgruppe)
+# Nur diese Stufen gelten als valide. Out of Scope Stufen führen zu Status "ungültig"
+valid_stufen:
+  # In Scope (Primäre Zielgruppe)
+  - "Sales Consultant"
+  - "Senior Sales Consultant"
+  - "Sales Manager"
+  - "Senior Sales Manager"
+  - "Seniorberater"
+  - "Teamleiter"
+  - "Repräsentanzleiter"
+  - "Branch Manager"
+  - "Regional Manager"
+  - "General Sales Manager"
+  # Out of Scope Stufen (siehe Dokumentation):
+  # - "Divisional Manager"
+  # - "General Manager"
+  # - "Juniorberater"
+  # - "Beraterassistent"
+  # - "Trainee"
+
+# Browser-Einstellungen
+browser:
+  headless: false
+  timeout: 30000
+  user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+# Link-Discovery
+discovery:
+  use_serper: true
+  use_crawl4ai: false
+  crawl4ai:
+    enable_stealth: true
+    enable_undetected: true
+    headless: false
+
+# Google-Suche Selektoren (Fallback bei Playwright)
+google_selectors:
+  search_box: 'textarea[name="q"], input[name="q"]'
+  search_button: 'input[type="submit"][name="btnK"], button[type="submit"]'
+  result_container: 'div#search div.g'
+  result_link: 'a[href]:not([href^="/"])'
+  consent_accept: 'button:has-text("Alle akzeptieren"), button:has-text("Accept all")'
+
+# Plattform URL-Patterns
+url_patterns:
+  tecis: "^https?://(?:www\\.)?tecis\\.de/[a-zA-Z0-9-]+(?:(?:/kontaktuebersicht|/impressum)\\.html|\\.html)?$"
+  linkedin: "^https?://(?:[a-z]{2}\\.)?linkedin\\.com/in/[a-zA-Z0-9-]+/?(\\?.*)?$"
+  xing: "^https?://(?:www\\.)?xing\\.com/profile/[a-zA-Z0-9_]+/?(\\?.*)?$"
+  creditreform: "^https?://firmeneintrag\\.creditreform\\.de/\\d+/\\d+/.+$"
+
+# Google Sheets
+sheets:
+  sheet_name: "Tecis"
+  input_columns:
+    full_name: "Full Name"
+    unternehmen: "Company"
+  output_columns:
+    telefonnummer: "Telefonnummer"
+    zweite_telefonnummer: "Zweite Telefonnummer"
+    stufe: "Stufe"
+    zielgruppe: "Zielgruppe"
+  header_row: 1
+  data_start_row: 2
+  skip_already_processed: true
+  skip_check_column: "Telefonnummer"
+
+# Logging
+logging:
+  level: "DEBUG"
+  file: "tecis_bot.log"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
