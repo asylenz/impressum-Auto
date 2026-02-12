@@ -233,21 +233,23 @@ class SheetsIO:
                     row_data = list(existing_rows[row_idx])  # Kopie der bestehenden Daten
                     # Zeile auf Header-Länge erweitern falls nötig
                     while len(row_data) < len(headers):
-                        row_data.append('')
+                        row_data.append(None)
                 else:
-                    row_data = [''] * len(headers)
+                    row_data = [None] * len(headers)
                 
                 # Output-Spalten aktualisieren (Input-Daten bleiben erhalten!)
-                row_data[tel_idx] = result.telefonnummer
-                row_data[tel2_idx] = result.zweite_telefonnummer
-                row_data[stufe_idx] = result.stufe
+                # Leere Strings durch None ersetzen, damit Zelle wirklich leer ist (kein leerer String)
+                row_data[tel_idx] = result.telefonnummer or None
+                row_data[tel2_idx] = result.zweite_telefonnummer or None
+                row_data[stufe_idx] = result.stufe or None
+                
                 # Zielgruppe: Status "Unbekannt" und "Wechsel/Nicht mehr in Branche" in Zielgruppe anzeigen
                 if result.status == STATUS_UNBEKANNT:
                     row_data[zielgruppe_idx] = STATUS_UNBEKANNT  # "Unbekannt" → wird orange formatiert
                 elif result.status == STATUS_WECHSEL:
                     row_data[zielgruppe_idx] = STATUS_WECHSEL  # "Wechsel/Nicht mehr in Branche" → wird rot formatiert
                 else:
-                    row_data[zielgruppe_idx] = result.zielgruppe or ""
+                    row_data[zielgruppe_idx] = result.zielgruppe or None
                 
                 # A1-Notation für diese Zeile
                 range_name = f"{self.sheet_name}!A{row_num}:Z{row_num}"

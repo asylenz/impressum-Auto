@@ -6,10 +6,17 @@ import logging
 import sys
 from pathlib import Path
 from datetime import timedelta
+import nest_asyncio
+
+print(f"DEBUG: Python Executable: {sys.executable}")
+print(f"DEBUG: Python Path: {sys.path}")
 
 # Projektverzeichnis zum Python-Pfad hinzufügen
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
+
+# Asyncio-Loop patchen für Playwright Sync API Kompatibilität
+nest_asyncio.apply()
 
 from src.config import Config
 from src.sheets_io import SheetsIO

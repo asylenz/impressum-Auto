@@ -3,7 +3,7 @@ Konstanten und Magic Strings für den Tecis-Bot
 """
 
 # Status-Werte (Appendix A)
-STATUS_WECHSEL = "Nicht mehr in Branche"
+STATUS_WECHSEL = "Wechsel/Nicht mehr in Branche"
 STATUS_UNGUELTIG = "ungültig"
 STATUS_UNBEKANNT = "Unbekannt"
 
