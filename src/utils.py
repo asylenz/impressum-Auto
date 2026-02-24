@@ -3,8 +3,9 @@ Utility-Funktionen
 """
 
 import re
-from typing import Optional, Tuple
-from src.constants import ACTIVE_KEYWORDS, STUFEN_IN_SCOPE, STUFEN_OUT_OF_SCOPE
+import unicodedata
+from typing import Optional, Tuple, Dict
+from src.constants import ACTIVE_KEYWORDS
 
 def extract_phone_from_href(href: str) -> str:
     """Extrahiert Telefonnummer aus tel: Link"""
@@ -21,25 +22,42 @@ def is_valid_phone(text: str) -> bool:
     pattern = r'^[\+\(\)\d\s\/-]{5,}$'
     return bool(re.match(pattern, text))
 
-def validate_stufe(stufe: str, valid_stufen: list) -> bool:
+def normalize_string_for_matching(text: str) -> str:
     """
-    Prüft ob Stufe in Whitelist (case-insensitive)
-    DEPRECATED: Verwende stattdessen categorize_stufe()
+    Normalisiert String für robusten Vergleich:
+    - Kleinschreibung
+    - Umlaute ersetzen (ä->ae, ö->oe, ü->ue, ß->ss)
+    - Akzente entfernen (á->a, é->e, etc.)
     """
-    if not stufe:
-        return False
+    if not text:
+        return ""
     
-    stufe_lower = stufe.lower().strip()
+    text = text.lower()
     
-    for valid in valid_stufen:
-        if valid.lower().strip() == stufe_lower:
-            return True
+    # Manuelle Ersetzung von deutschen Umlauten (Expansion)
+    replacements = {
+        'ä': 'ae',
+        'ö': 'oe',
+        'ü': 'ue',
+        'ß': 'ss'
+    }
+    for char, replacement in replacements.items():
+        text = text.replace(char, replacement)
     
-    return False
+    # Unicode-Normalisierung um Akzente zu entfernen (NFD splittet Zeichen + Akzent)
+    text = unicodedata.normalize('NFD', text)
+    # Entferne alle nicht-ASCII Zeichen (die Akzente)
+    text = "".join([c for c in text if not unicodedata.combining(c)])
+    
+    return text
 
-def categorize_stufe(stufe: str) -> Tuple[bool, str]:
+def categorize_stufe(stufe: str, config_stufen: Dict[str, list]) -> Tuple[bool, str]:
     """
     Kategorisiert eine Stufe in In Scope, Out of Scope oder Unbekannt
+    
+    Args:
+        stufe: Die zu prüfende Stufe
+        config_stufen: Dict mit 'in_scope' und 'out_of_scope' Listen
     
     Returns:
         Tuple[is_valid, category]
@@ -51,13 +69,17 @@ def categorize_stufe(stufe: str) -> Tuple[bool, str]:
     
     stufe_lower = stufe.lower().strip()
     
+    # Listen holen
+    in_scope = config_stufen.get('in_scope', [])
+    out_of_scope = config_stufen.get('out_of_scope', [])
+    
     # Prüfe In Scope (Zielgruppe)
-    for valid_stufe in STUFEN_IN_SCOPE:
+    for valid_stufe in in_scope:
         if valid_stufe.lower().strip() == stufe_lower:
             return True, "in_scope"
     
     # Prüfe Out of Scope (bekannte Stufen, aber nicht Zielgruppe)
-    for invalid_stufe in STUFEN_OUT_OF_SCOPE:
+    for invalid_stufe in out_of_scope:
         if invalid_stufe.lower().strip() == stufe_lower:
             return False, "out_of_scope"
     

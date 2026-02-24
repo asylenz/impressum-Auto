@@ -28,7 +28,7 @@ class LeadResult:
     zielgruppe: str = ""  # "In Scope", "Out of Scope" oder leer
     
     # URLs für Debugging/Logging
-    target_url_tecis: Optional[str] = None
+    target_url_company: Optional[str] = None
     target_url_linkedin: Optional[str] = None
     target_url_xing: Optional[str] = None
     target_url_creditreform: Optional[str] = None

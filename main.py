@@ -1,15 +1,13 @@
 """
-Tecis-Bot: Hauptmodul für das Scraping-System
+Company-Bot: Hauptmodul für das Scraping-System
 """
 
 import logging
 import sys
+import argparse
 from pathlib import Path
 from datetime import timedelta
 import nest_asyncio
-
-print(f"DEBUG: Python Executable: {sys.executable}")
-print(f"DEBUG: Python Path: {sys.path}")
 
 # Projektverzeichnis zum Python-Pfad hinzufügen
 project_root = Path(__file__).parent
@@ -20,7 +18,7 @@ nest_asyncio.apply()
 
 from src.config import Config
 from src.sheets_io import SheetsIO
-from src.bot import TecisBot
+from src.bot import CompanyBot
 from src.rate_limiter import RateLimitExceeded
 
 def setup_logging(config: Config):
@@ -36,7 +34,7 @@ def setup_logging(config: Config):
         format=log_format,
         datefmt=date_format,
         handlers=[
-            logging.FileHandler(log_config.get('file', 'tecis_bot.log'), encoding='utf-8'),
+            logging.FileHandler(log_config.get('file', 'bot.log'), encoding='utf-8'),
             logging.StreamHandler()
         ]
     )
@@ -47,16 +45,24 @@ def setup_logging(config: Config):
 
 def main():
     """Hauptfunktion"""
+    # Argument Parser setup
+    parser = argparse.ArgumentParser(description='Company Lead Scraping Bot')
+    parser.add_argument('--mode', type=str, help='Modus (z.B. tecis)', default=None)
+    args = parser.parse_args()
+
+    # Logger initialisieren (wird später konfiguriert, aber wir brauchen ihn für Exception Handling)
+    logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
     
     try:
         # Konfiguration laden (immer relativ zum Projektverzeichnis)
         config_path = project_root / "config.yaml"
-        config = Config(str(config_path))
+        config = Config(str(config_path), mode=args.mode)
         setup_logging(config)
         
         logger.info("="*80)
-        logger.info("Tecis-Bot startet...")
+        logger.info(f"Company-Bot startet im Modus: {config.mode}...")
+        logger.info(f"Firma: {config.company_name}")
         logger.info("="*80)
         
         # Google Sheets Verbindung
@@ -72,7 +78,7 @@ def main():
             return
         
         # Bot initialisieren
-        bot = TecisBot(config)
+        bot = CompanyBot(config)
         
         # LinkedIn Rate-Limit Pre-Check
         logger.info("Prüfe LinkedIn Rate-Limit Status...")
@@ -131,7 +137,7 @@ def main():
             logger.warning("⚠ Bot durch Benutzer abgebrochen")
         
         logger.info("="*80)
-        logger.info("Tecis-Bot beendet.")
+        logger.info("Company-Bot beendet.")
         
     except KeyboardInterrupt:
         logger.info("Bot durch Benutzer abgebrochen")

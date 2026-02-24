@@ -1,4 +1,89 @@
-# Tecis-Bot Konfiguration
+# Bot Konfiguration
+
+# Aktueller Modus (Standard: tecis)
+current_mode: tecis
+
+# Firmen-Spezifische Konfigurationen
+companies:
+  tecis:
+    name: "tecis"
+    domain: "tecis.de"
+    # Alternative Namen im Sheet (Case-insensitive)
+    sheet_aliases:
+      - "tecis"
+      - "tecis finanzdienstleistungen ag"
+      - "tecis ag"
+    # Gültige Stufen (In Scope / Zielgruppe)
+    stufen:
+      in_scope:
+        - "Sales Consultant"
+        - "Senior Sales Consultant"
+        - "Sales Manager"
+        - "Senior Sales Manager"
+        - "Seniorberater"
+        - "Teamleiter"
+        - "Repräsentanzleiter"
+        - "Branch Manager"
+        - "Regional Manager"
+        - "General Sales Manager"
+      out_of_scope:
+        - "Divisional Manager"
+        - "General Manager"
+        - "Juniorberater"
+        - "Beraterassistent"
+        - "Trainee"
+    
+    # URL Pattern für die Firmenseite
+    url_pattern: "^https?://(?:www\\.)?tecis\\.de/[a-zA-Z0-9-]+(?:(?:/kontaktuebersicht|/impressum)\\.html|\\.html)?$"
+    
+    # Selektoren für die Firmenseite
+    # Unterstützt einzelne Strings oder Listen von Selektoren
+    # Die Selektoren werden der Reihe nach geprüft
+    selectors:
+      title: 
+        - ".personal-information__title"
+        - "h1 + span[class*='title']"
+      
+      # Kontakt-Links Container (optional)
+      contact_links: 
+        - 'div.contacts-columns a[href^="tel:"]'
+        - '.contact-info a[href^="tel:"]'
+    
+    # URL Suffixe
+    suffixes:
+      kontakt: "/kontaktuebersicht.html"
+      impressum: "/impressum.html"
+
+  swiss_life_select:
+    name: "Swiss Life Select"
+    domain: "swisslife-select.de"
+    sheet_aliases:
+      - "swiss life"
+      - "swiss life select"
+      - "sls"
+    stufen:
+      in_scope:
+        - "Finanzberater"
+        - "Teammanager"
+        - "Manager"
+        - "Direktor"
+        - "Seniordirektor"
+      out_of_scope: []
+    
+    url_pattern: "^https?://(?:www\\.)?swisslife-select\\.de/[a-zA-Z0-9-]+(?:(?:/kontaktuebersicht|/impressum)\\.html|\\.html)?$"
+    
+    # Gleiche Struktur wie tecis
+    selectors:
+      title: 
+        - ".personal-information__title"
+        - "h1 + span[class*='title']"
+      contact_links: 
+        - 'div.contacts-columns a[href^="tel:"]'
+        - '.contact-info a[href^="tel:"]'
+    
+    suffixes:
+      kontakt: "/kontaktuebersicht.html"
+      impressum: "/impressum.html"
 
 # Rate-Limits (pro Plattform)
 limits:
@@ -15,34 +100,17 @@ limits:
     delay_between_requests_min: 2
     delay_between_requests_max: 5
 
-  tecis:
+  tecis: # Rate limit für Firmenseite
+    delay_between_requests_min: 1
+    delay_between_requests_max: 3
+
+  company_site: # Generisches Rate limit für Firmenseiten
     delay_between_requests_min: 1
     delay_between_requests_max: 3
 
   google_search:
     delay_between_requests_min: 1
     delay_between_requests_max: 5
-
-# Gültige Stufen (Appendix B - In Scope / Zielgruppe)
-# Nur diese Stufen gelten als valide. Out of Scope Stufen führen zu Status "ungültig"
-valid_stufen:
-  # In Scope (Primäre Zielgruppe)
-  - "Sales Consultant"
-  - "Senior Sales Consultant"
-  - "Sales Manager"
-  - "Senior Sales Manager"
-  - "Seniorberater"
-  - "Teamleiter"
-  - "Repräsentanzleiter"
-  - "Branch Manager"
-  - "Regional Manager"
-  - "General Sales Manager"
-  # Out of Scope Stufen (siehe Dokumentation):
-  # - "Divisional Manager"
-  # - "General Manager"
-  # - "Juniorberater"
-  # - "Beraterassistent"
-  # - "Trainee"
 
 # Browser-Einstellungen
 browser:
@@ -67,9 +135,8 @@ google_selectors:
   result_link: 'a[href]:not([href^="/"])'
   consent_accept: 'button:has-text("Alle akzeptieren"), button:has-text("Accept all")'
 
-# Plattform URL-Patterns
+# Plattform URL-Patterns (Generisch)
 url_patterns:
-  tecis: "^https?://(?:www\\.)?tecis\\.de/[a-zA-Z0-9-]+(?:(?:/kontaktuebersicht|/impressum)\\.html|\\.html)?$"
   linkedin: "^https?://(?:[a-z]{2}\\.)?linkedin\\.com/in/[a-zA-Z0-9-]+/?(\\?.*)?$"
   xing: "^https?://(?:www\\.)?xing\\.com/profile/[a-zA-Z0-9_]+/?(\\?.*)?$"
   creditreform: "^https?://firmeneintrag\\.creditreform\\.de/\\d+/\\d+/.+$"
@@ -93,5 +160,5 @@ sheets:
 # Logging
 logging:
   level: "DEBUG"
-  file: "tecis_bot.log"
+  file: "bot.log"
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

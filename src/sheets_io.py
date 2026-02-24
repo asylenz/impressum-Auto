@@ -26,6 +26,7 @@ class SheetsIO:
         self.sheet_id = config.sheet_id
         self.sheet_name = config.get('sheets.sheet_name', 'Sheet1')
         self.service = self._authenticate()
+        self.company_aliases = config.company_aliases
     
     def _authenticate(self):
         """OAuth2 Authentifizierung"""
@@ -63,6 +64,7 @@ class SheetsIO:
     def read_leads(self) -> List[Lead]:
         """
         Liest Leads aus Google Sheets.
+        Filtert nach Unternehmen (basierend auf company_aliases).
         Wenn skip_already_processed=true: Es werden alle Zeilen verarbeitet,
         in denen die Skip-Check-Spalte (z.B. Telefonnummer) leer ist –
         also auch Lücken (nicht ausgefüllte Zeilen dazwischen).
@@ -121,26 +123,48 @@ class SheetsIO:
             
             rows = result.get('values', [])
             
-            # Verarbeite alle Zeilen, in denen die Skip-Spalte (z.B. Telefonnummer) leer ist –
-            # also auch Lücken (nicht ausgefüllte Zeilen dazwischen). Hilft z.B. beim LinkedIn-Limiter.
             leads = []
             for i, row in enumerate(rows, start=data_start):
-                # Bereits verarbeitet = Skip-Spalte ist ausgefüllt (nicht leer)
-                if skip_already and skip_idx is not None:
-                    if len(row) > skip_idx:
-                        cell = (row[skip_idx] or "").strip()
-                        if cell:
-                            continue  # Zeile überspringen, wurde schon verarbeitet
-                
                 # Zeile hat genug Spalten?
                 if len(row) > max(vorname_idx, nachname_idx, unternehmen_idx):
+                    unternehmen = row[unternehmen_idx].strip() if len(row) > unternehmen_idx else ""
+                    
+                    # 1. Unternehmens-Filter (Muss VOR Skip-Check passieren, um falsche Firmen komplett zu ignorieren)
+                    is_valid_company = False
+                    for alias in self.company_aliases:
+                        if alias.lower() in unternehmen.lower():
+                            is_valid_company = True
+                            break
+                    
+                    if not is_valid_company:
+                        # logger.debug(f"Zeile {i}: Unternehmen '{unternehmen}' passt nicht zu Modus '{self.config.mode}' (Erlaubt: {self.company_aliases})")
+                        continue
+
+                    # 2. Skip-Check (Bereits verarbeitet?)
+                    if skip_already and skip_idx is not None:
+                        if len(row) > skip_idx:
+                            cell = (row[skip_idx] or "").strip()
+                            if cell:
+                                continue  # Zeile überspringen, wurde schon verarbeitet
+                    
+                    # Lead erstellen
                     if use_full_name:
-                        vorname = (row[full_name_idx].strip() if len(row) > full_name_idx else "")
-                        nachname = ""  # Full Name ungeteilt nutzen
+                        full_name = (row[full_name_idx].strip() if len(row) > full_name_idx else "")
+                        # Split full name into first and last name
+                        # This is a basic split, assuming "First Last" or "First Middle Last"
+                        parts = full_name.split()
+                        if len(parts) >= 2:
+                            # Last part is surname, everything before is first name(s)
+                            # This handles middle names better than just assigning full_name to vorname
+                            nachname = parts[-1]
+                            vorname = " ".join(parts[:-1])
+                        else:
+                            # Fallback if only one name part
+                            vorname = full_name
+                            nachname = ""
                     else:
                         vorname = row[vorname_idx].strip() if len(row) > vorname_idx else ""
                         nachname = row[nachname_idx].strip() if len(row) > nachname_idx else ""
-                    unternehmen = row[unternehmen_idx].strip() if len(row) > unternehmen_idx else ""
                     
                     if vorname and (nachname or use_full_name):
                         leads.append(Lead(
@@ -151,7 +175,7 @@ class SheetsIO:
                         ))
             
             if skip_already and leads:
-                logger.info(f"{len(leads)} Zeilen mit leerer {skip_col} (inkl. Lücken dazwischen) werden verarbeitet")
+                logger.info(f"{len(leads)} Zeilen für '{self.config.mode}' mit leerer {skip_col} (inkl. Lücken) werden verarbeitet")
             
             return leads
             

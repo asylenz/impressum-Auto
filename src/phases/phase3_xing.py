@@ -19,6 +19,7 @@ class XingPhase:
         self.config = config
         self.rate_limiter = rate_limiter
         self.valid_stufen = config.valid_stufen
+        self.company_name = config.company_name
     
     def process(self, page: Page, url: str, lead: Lead, flags: ProcessingFlags) -> Tuple[Optional[str], bool]:
         """
@@ -38,15 +39,15 @@ class XingPhase:
             page.goto(url, wait_until='domcontentloaded')
             page.wait_for_timeout(2000)
             
-            # Tecis-Eintrag in Berufserfahrung suchen
-            tecis_entry = self._find_tecis_entry(page)
+            # Firmen-Eintrag in Berufserfahrung suchen
+            company_entry = self._find_company_entry(page)
             
-            if not tecis_entry:
-                logger.info("Kein Tecis-Eintrag in Xing Berufserfahrung gefunden")
+            if not company_entry:
+                logger.info(f"Kein {self.company_name}-Eintrag in Xing Berufserfahrung gefunden")
                 return None, True
             
             # Status prüfen ("bis heute")
-            ist_aktiv = self._check_active_status(tecis_entry)
+            ist_aktiv = self._check_active_status(company_entry)
             
             if not ist_aktiv:
                 # Bei LinkedIn=Active confirmed widerspricht Xing
@@ -54,13 +55,13 @@ class XingPhase:
                     logger.info("Xing zeigt 'ehemalig', aber LinkedIn zeigte 'aktiv' - ignoriere Xing-Status")
                     ist_aktiv = True
                 else:
-                    logger.info("Person ist nicht mehr bei Tecis (ehemaliger Eintrag)")
+                    logger.info(f"Person ist nicht mehr bei {self.company_name} (ehemaliger Eintrag)")
                     return None, False
             
-            logger.info("Person ist aktiv bei Tecis")
+            logger.info(f"Person ist aktiv bei {self.company_name}")
             
             # Stufe extrahieren
-            stufe = self._extract_stufe(tecis_entry)
+            stufe = self._extract_stufe(company_entry)
             
             if stufe:
                 logger.info(f"Stufe gefunden: {stufe}")
@@ -74,57 +75,60 @@ class XingPhase:
             logger.error(f"Fehler beim Verarbeiten von Xing-Profil: {e}")
             return None, True
     
-    def _find_tecis_entry(self, page: Page) -> Optional[any]:
-        """Findet den Tecis-Eintrag in der Berufserfahrung"""
+    def _find_company_entry(self, page: Page) -> Optional[any]:
+        """Findet den Firmen-Eintrag in der Berufserfahrung"""
         try:
             # Xing nutzt keine class/experience – warte auf Seiteninhalt
-            # 'load' statt 'networkidle' um Tracking/Analytics-Requests zu ignorieren
             page.wait_for_load_state('load', timeout=10000)
             page.wait_for_timeout(2000)
             
-            # Variante 1: XPath – Tecis-Link und nächster Ancestor mit h4 (Stufe)
+            company_lower = self.company_name.lower()
+            company_upper = self.company_name.upper()
+            
+            # Variante 1: XPath – Firmen-Link und nächster Ancestor mit h4 (Stufe)
             xpaths = [
-                '//a[contains(@href,"tecis")]/ancestor::*[.//h4][1]',
-                '//a[contains(translate(text(),"TECIS","tecis"),"tecis")]/ancestor::*[.//h4][1]',
+                f'//a[contains(@href,"{company_lower}")]/ancestor::*[.//h4][1]',
+                f'//a[contains(translate(text(),"{company_upper}","{company_lower}"),"{company_lower}")]/ancestor::*[.//h4][1]',
             ]
             for xpath in xpaths:
                 try:
                     entries = page.query_selector_all(f'xpath={xpath}')
                     if entries:
-                        logger.debug(f"Tecis-Eintrag via XPath gefunden")
+                        logger.debug(f"{self.company_name}-Eintrag via XPath gefunden")
                         return entries[0]
                 except Exception:
                     pass
             
-            # Variante 2: Tecis-Link direkt (Fallback für Stufe aus Headline)
-            tecis_link = page.query_selector('a[href*="tecis"]')
-            if tecis_link:
-                return tecis_link
+            # Variante 2: Firmen-Link direkt (Fallback für Stufe aus Headline)
+            # Einfache Suche nach href enthält firmenname
+            company_link = page.query_selector(f'a[href*="{company_lower}"]')
+            if company_link:
+                return company_link
             
             # Variante 3: Alte Selektoren (eingeloggte Nutzer)
             for sel in ['[class*="experience"]', '[data-section="experience"]']:
                 try:
                     section = page.query_selector(sel)
                     if section:
-                        entries = section.query_selector_all('xpath=.//a[contains(translate(text(),"TECIS","tecis"),"tecis")]/ancestor::*[.//h4][1]')
+                        entries = section.query_selector_all(f'xpath=.//a[contains(translate(text(),"{company_upper}","{company_lower}"),"{company_lower}")]/ancestor::*[.//h4][1]')
                         if entries:
                             return entries[0]
                 except Exception:
                     pass
             
-            # Fallback: Tecis-Text auf Seite
+            # Fallback: Firmen-Text auf Seite
             body_text = page.inner_text('body').lower()
-            if 'tecis' in body_text:
-                logger.debug("Tecis-Text auf Seite gefunden (Fallback)")
+            if company_lower in body_text:
+                logger.debug(f"{self.company_name}-Text auf Seite gefunden (Fallback)")
                 return page.query_selector('main') or page.query_selector('body')
         
         except Exception as e:
-            logger.debug(f"Fehler beim Suchen von Tecis-Eintrag: {e}")
+            logger.debug(f"Fehler beim Suchen von Firmen-Eintrag: {e}")
         
         return None
     
     def _check_active_status(self, entry) -> bool:
-        """Prüft ob Tecis-Eintrag noch aktiv ist (bis heute)"""
+        """Prüft ob Eintrag noch aktiv ist (bis heute)"""
         try:
             text = entry.inner_text()
             return check_active_status(text)
@@ -132,7 +136,7 @@ class XingPhase:
             return True
     
     def _extract_stufe(self, entry) -> Optional[str]:
-        """Extrahiert Stufe aus Tecis-Eintrag"""
+        """Extrahiert Stufe aus Eintrag"""
         try:
             # data-mds="Headline" - Xing-Spezifikation
             stufe_element = entry.query_selector(f'h4[{XING_HEADLINE_ATTR}="{XING_HEADLINE_VALUE}"]')
@@ -153,7 +157,7 @@ class XingPhase:
                         return h ? h.innerText.trim() : null;
                     }''')
                     if stufe_text_raw:
-                        is_valid, category = categorize_stufe(stufe_text_raw)
+                        is_valid, category = categorize_stufe(stufe_text_raw, self.valid_stufen)
                         if category in ["in_scope", "out_of_scope"]:
                             return stufe_text_raw
                 except Exception:
@@ -161,7 +165,7 @@ class XingPhase:
             
             if stufe_element:
                 stufe_text = stufe_element.inner_text().strip()
-                is_valid, category = categorize_stufe(stufe_text)
+                is_valid, category = categorize_stufe(stufe_text, self.valid_stufen)
                 if category in ["in_scope", "out_of_scope"]:
                     return stufe_text
                 logger.debug(f"Stufe '{stufe_text}' - Kategorie: {category}")

@@ -1,5 +1,5 @@
 """
-Haupt-Bot-Logik: Orchestrierung aller Phasen
+Haupt-Bot-Logik: Orchestrierung aller Phasen (Modular)
 """
 
 import logging
@@ -12,22 +12,23 @@ from src.models import Lead, LeadResult, ProcessingFlags
 from src.rate_limiter import RateLimiter, RateLimitExceeded
 from src.linkedin_auth import LinkedInAuth
 from src.discovery import LinkDiscovery
-from src.phases import TecisPhase, LinkedInPhase, XingPhase, CreditreformPhase
+from src.phases import CompanySitePhase, LinkedInPhase, XingPhase, CreditreformPhase
 from src.constants import STATUS_WECHSEL, STATUS_UNGUELTIG, STATUS_UNBEKANNT, TEL_KEINE, TEL_NA, STUFE_NA
 from src.utils import categorize_stufe
 
 logger = logging.getLogger(__name__)
 
-class TecisBot:
-    """Haupt-Bot zur Lead-Verarbeitung"""
+class CompanyBot:
+    """Haupt-Bot zur Lead-Verarbeitung (Generisch)"""
     
     def __init__(self, config: Config):
         self.config = config
         self.rate_limiter = RateLimiter(config)
         self.linkedin_auth = LinkedInAuth(config)
+        self.company_name = config.company_name
         
         # Phasen initialisieren
-        self.tecis_phase = TecisPhase(config, self.rate_limiter)
+        self.company_site_phase = CompanySitePhase(config, self.rate_limiter)
         self.linkedin_phase = LinkedInPhase(config, self.rate_limiter)
         self.xing_phase = XingPhase(config, self.rate_limiter)
         self.creditreform_phase = CreditreformPhase(config, self.rate_limiter)
@@ -80,7 +81,7 @@ class TecisBot:
         Verarbeitet einen Lead durch alle Phasen
         Gibt LeadResult zurück
         """
-        logger.info(f"=== Starte Verarbeitung: {lead.full_name} ===")
+        logger.info(f"=== Starte Verarbeitung ({self.config.mode}): {lead.full_name} ===")
         
         result = LeadResult(lead=lead)
         flags = ProcessingFlags()
@@ -91,15 +92,15 @@ class TecisBot:
             link_discovery = LinkDiscovery(self.config, self.rate_limiter)
             urls = link_discovery.discover_urls(lead)
             
-            result.target_url_tecis = urls['tecis']
+            result.target_url_company = urls['company']
             result.target_url_linkedin = urls['linkedin']
             result.target_url_xing = urls['xing']
             result.target_url_creditreform = urls['creditreform']
             
             # Browser starten für Phasen
             with self:
-                # 2. Phase 1: Tecis
-                stufe, telefonnummern = self._phase1_tecis(result, flags)
+                # 2. Phase 1: Company Site
+                stufe, telefonnummern = self._phase1_company_site(result, flags)
                 
                 if stufe:
                     result.stufe = stufe
@@ -157,15 +158,15 @@ class TecisBot:
         result.zweite_telefonnummer = ""
         result.stufe = STUFE_NA
     
-    def _phase1_tecis(self, result: LeadResult, flags: ProcessingFlags) -> Tuple[Optional[str], List[str]]:
-        """Phase 1: Tecis"""
-        if not result.target_url_tecis:
-            logger.info("Phase 1: Keine Tecis-URL -> Überspringe")
+    def _phase1_company_site(self, result: LeadResult, flags: ProcessingFlags) -> Tuple[Optional[str], List[str]]:
+        """Phase 1: Firmenseite"""
+        if not result.target_url_company:
+            logger.info(f"Phase 1: Keine {self.company_name}-URL -> Überspringe")
             return None, []
         
-        logger.info("--- Phase 1: Tecis ---")
-        stufe, telefonnummern = self.tecis_phase.process(
-            self.page, result.target_url_tecis, result.lead, flags
+        logger.info(f"--- Phase 1: {self.company_name} ---")
+        stufe, telefonnummern = self.company_site_phase.process(
+            self.page, result.target_url_company, result.lead, flags
         )
         
         # Flags für nächste Phase setzen
@@ -196,15 +197,15 @@ class TecisBot:
             self.page, result.target_url_linkedin, result.lead, flags
         )
         
-        # Status für ehemalige Mitarbeiter setzen – nur wenn KEINE Tecis-Seite existiert.
-        # Existiert eine Tecis-Seite, ist die Person dort gelistet = aktiv (Tecis ist maßgeblich).
-        if not ist_aktiv and not result.target_url_tecis:
+        # Status für ehemalige Mitarbeiter setzen – nur wenn KEINE Company-Seite existiert.
+        # Existiert eine Company-Seite, ist die Person dort gelistet = aktiv (Company ist maßgeblich).
+        if not ist_aktiv and not result.target_url_company:
             self._set_inactive_status(result)
             return None, [], False
-        if not ist_aktiv and result.target_url_tecis:
-            logger.info("LinkedIn: Eintrag ohne 'Heute', aber Tecis-Seite vorhanden → behandle als aktiv, behalte Tecis-Daten")
+        if not ist_aktiv and result.target_url_company:
+            logger.info(f"LinkedIn: Eintrag ohne 'Heute', aber {self.company_name}-Seite vorhanden → behandle als aktiv, behalte Daten")
         
-        # Status-Flag setzen (nur wenn aktiv oder Tecis-Seite vorhanden)
+        # Status-Flag setzen (nur wenn aktiv oder Company-Seite vorhanden)
         flags.status_active_confirmed = True
         
         return stufe, telefonnummern, ist_aktiv
@@ -221,12 +222,12 @@ class TecisBot:
             self.page, result.target_url_xing, result.lead, flags
         )
         
-        # Status für ehemalige Mitarbeiter setzen nur wenn weder LinkedIn aktiv bestätigt noch Tecis-Seite existiert
-        if not ist_aktiv and not flags.status_active_confirmed and not result.target_url_tecis:
+        # Status für ehemalige Mitarbeiter setzen nur wenn weder LinkedIn aktiv bestätigt noch Company-Seite existiert
+        if not ist_aktiv and not flags.status_active_confirmed and not result.target_url_company:
             self._set_inactive_status(result)
             return None, False
-        if not ist_aktiv and result.target_url_tecis:
-            logger.info("Xing: Kein aktiver Eintrag, aber Tecis-Seite vorhanden → behandle als aktiv, behalte Tecis-Daten")
+        if not ist_aktiv and result.target_url_company:
+            logger.info(f"Xing: Kein aktiver Eintrag, aber {self.company_name}-Seite vorhanden → behandle als aktiv, behalte Daten")
         
         return stufe, ist_aktiv
     
@@ -247,20 +248,13 @@ class TecisBot:
     def _apply_output_logic(self, result: LeadResult) -> None:
         """
         Wendet Appendix A Output-Logik an
-        
-        Szenario 1: Telefonnummer(n) und Stufe gefunden → (Status bleibt leer, außer Out of Scope)
-        Szenario 2: Telefonnummer(n) aber KEINE Stufe → Status "ungültig"
-        Szenario 3: Stufe aber KEINE Telefonnummer → "garkeine"
-        Szenario 4: KEINE Telefonnummer und KEINE Stufe → "garkeine" oder "n/a"
-        Szenario 5: KEIN Tecis Eintrag → "n/a"
-        Szenario 6: NICHT mehr bei Tecis → "Wechsel..." (bereits gesetzt)
         """
         has_telefon = bool(result.telefonnummer and result.telefonnummer not in ["", TEL_KEINE, TEL_NA])
         has_stufe = bool(result.stufe and result.stufe not in ["", STUFE_NA])
 
         # Prüfe ob Stufe Out of Scope ist (bekannt aber nicht Zielgruppe)
         if has_stufe:
-            is_valid, category = categorize_stufe(result.stufe)
+            is_valid, category = categorize_stufe(result.stufe, self.config.valid_stufen)
             
             # Zielgruppe setzen basierend auf Kategorie
             if category == "in_scope":
@@ -277,7 +271,6 @@ class TecisBot:
                 return  # Fertig, Status ist gesetzt
 
         # Szenario 2: Telefon vorhanden, aber keine gültige Stufe (Spec: Status "Unbekannt")
-        # Wechsel-Status (Szenario 6) nicht überschreiben, wenn z.B. Tecis Tel hatte, LinkedIn aber "ehemalig"
         if has_telefon and not has_stufe:
             result.stufe = STUFE_NA
             if result.status != STATUS_WECHSEL:
@@ -288,12 +281,12 @@ class TecisBot:
             result.telefonnummer = TEL_KEINE
             result.zweite_telefonnummer = ""
         
-        # Szenario 4 & 5: Weder Telefon noch Stufe (Status nur setzen wenn nicht schon Szenario 6)
+        # Szenario 4 & 5: Weder Telefon noch Stufe
         elif not has_telefon and not has_stufe:
             if result.status != STATUS_WECHSEL:
                 result.status = STATUS_UNBEKANNT
-            # Szenario 5: Kein Tecis-Eintrag auf allen Plattformen
-            if not result.target_url_tecis and not result.target_url_linkedin and not result.target_url_xing:
+            # Szenario 5: Kein Company-Eintrag auf allen Plattformen
+            if not result.target_url_company and not result.target_url_linkedin and not result.target_url_xing:
                 result.telefonnummer = TEL_NA
                 result.stufe = STUFE_NA
             # Szenario 4: URLs vorhanden, aber keine Daten gefunden

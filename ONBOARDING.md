@@ -420,7 +420,12 @@ browser:
 
 ```bash
 # Virtual Environment sollte aktiv sein (Terminal zeigt "(venv)")
+
+# Standard-Modus (Tecis)
 python main.py
+
+# Oder spezifischer Modus (z.B. Swiss Life Select)
+python main.py --mode swiss_life_select
 ```
 
 ### 6.3 Was jetzt passiert

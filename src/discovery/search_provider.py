@@ -11,6 +11,7 @@ from typing import List, Optional
 from urllib.parse import quote_plus
 from playwright.sync_api import sync_playwright, Page, TimeoutError as PlaywrightTimeout
 
+from src.utils import extract_phone_from_href, categorize_stufe, normalize_string_for_matching
 from src.models import SearchResult, Lead
 
 logger = logging.getLogger(__name__)
@@ -419,8 +420,12 @@ class LinkDiscovery:
     def __init__(self, config, rate_limiter):
         self.config = config
         self.rate_limiter = rate_limiter
+        
+        self.company_domain = config.company_config.get('domain', 'tecis.de')
+        self.company_name = config.company_name
+        
         self.url_patterns = {
-            'tecis': re.compile(config.get('url_patterns.tecis', r'^https?://(?:www\.)?tecis\.de/[a-zA-Z0-9-]+(?:(?:/kontaktuebersicht|/impressum)\.html|\.html)?$')),
+            'company': re.compile(config.company_url_pattern),
             'linkedin': re.compile(config.get('url_patterns.linkedin', r'^https?://(?:www\.)?linkedin\.com/in/[a-zA-Z0-9-]+/?$')),
             'xing': re.compile(config.get('url_patterns.xing', r'^https?://(?:www\.)?xing\.com/profile/[a-zA-Z0-9_]+/?$')),
             'creditreform': re.compile(config.get('url_patterns.creditreform', r'^https?://firmeneintrag\.creditreform\.de/\d+/\d+/.+$'))
@@ -429,7 +434,7 @@ class LinkDiscovery:
     def discover_urls(self, lead: Lead) -> dict:
         """Findet URLs für alle 4 Plattformen"""
         urls = {
-            'tecis': None,
+            'company': None,
             'linkedin': None,
             'xing': None,
             'creditreform': None
@@ -444,67 +449,69 @@ class LinkDiscovery:
         if use_serper:
             logger.info("Verwende Serper API (zuverlässig, keine CAPTCHA)")
             search_provider = SerperGoogleSearch(self.config, self.rate_limiter)
-            
-            # Serper braucht keinen Context Manager
-            for platform, query in queries.items():
-                logger.info(f"Suche {platform}-URL für {lead.full_name}...")
-                
-                results = search_provider.search(query)
-                url = self._validate_result(results, platform, lead)
-                
-                if url:
-                    logger.info(f"{platform} URL gefunden: {url}")
-                    urls[platform] = url
-                else:
-                    logger.info(f"Kein {platform}-Eintrag gefunden")
-                    
         elif use_crawl4ai:
             logger.info("Verwende Crawl4AI mit Anti-Bot-Schutz für Link-Discovery")
             search_provider = Crawl4AIGoogleSearch(self.config, self.rate_limiter)
-            
-            # Crawl4AI braucht keinen Context Manager
-            for platform, query in queries.items():
-                logger.info(f"Suche {platform}-URL für {lead.full_name}...")
-                
-                results = search_provider.search(query)
-                url = self._validate_result(results, platform, lead)
-                
-                if url:
-                    logger.info(f"{platform} URL gefunden: {url}")
-                    urls[platform] = url
-                else:
-                    logger.info(f"Kein {platform}-Eintrag gefunden")
         else:
             logger.info("Verwende Playwright (Fallback) für Link-Discovery")
-            # Fallback auf Playwright mit Context Manager
-            with PlaywrightGoogleSearch(self.config, self.rate_limiter) as search:
-                for platform, query in queries.items():
-                    logger.info(f"Suche {platform}-URL für {lead.full_name}...")
-                    
-                    results = search.search(query)
-                    url = self._validate_result(results, platform, lead)
-                    
-                    if url:
-                        logger.info(f"{platform} URL gefunden: {url}")
-                        urls[platform] = url
-                    else:
-                        logger.info(f"Kein {platform}-Eintrag gefunden")
+            search_provider = PlaywrightGoogleSearch(self.config, self.rate_limiter)
+            
+        # Provider Context Handling
+        if hasattr(search_provider, '__enter__'):
+             with search_provider as search:
+                self._run_search(search, queries, urls, lead)
+        else:
+            self._run_search(search_provider, queries, urls, lead)
         
         return urls
+        
+    def _run_search(self, search_provider, queries, urls, lead):
+        """Führt Suche für alle Queries aus"""
+        for platform, query in queries.items():
+            logger.info(f"Suche {platform}-URL für {lead.full_name}...")
+            
+            results = search_provider.search(query)
+            url = self._validate_result(results, platform, lead)
+            
+            if url:
+                logger.info(f"{platform} URL gefunden: {url}")
+                urls[platform] = url
+            else:
+                logger.info(f"Kein {platform}-Eintrag gefunden")
     
     def _build_queries(self, lead: Lead) -> dict:
         """Erstellt Such-Queries für alle Plattformen (nutzt Full Name ohne Aufteilung)"""
-        name = lead.full_name
+        # Wir nutzen nur den ersten Teil des Vornamens und den letzten Teil des Nachnamens
+        # Das verhindert Probleme mit Mittelnamen/Initialen
+        parts_vorname = lead.vorname.split()
+        parts_nachname = lead.nachname.split()
+        
+        lead_first = parts_vorname[0] if parts_vorname else lead.vorname
+        lead_last = parts_nachname[-1] if parts_nachname else lead.nachname
+        
+        name_query = f"{lead_first} {lead_last}"
+        
         return {
-            'tecis': f'site:tecis.de "{name}"',
-            'linkedin': f'site:linkedin.com/in/ "{name}" tecis',
-            'xing': f'site:xing.com/profile "{name}" tecis',
-            'creditreform': f'site:firmeneintrag.creditreform.de "{name}" Versicherungsmakler'
+            'company': f'site:{self.company_domain} {name_query}',
+            'linkedin': f'site:linkedin.com/in/ "{name_query}" {self.company_name}',
+            'xing': f'site:xing.com/profile "{name_query}" {self.company_name}',
+            'creditreform': f'site:firmeneintrag.creditreform.de "{name_query}" Versicherungsmakler'
         }
     
     def _validate_result(self, results: List[SearchResult], platform: str, lead: Lead) -> Optional[str]:
-        """Validiert Suchergebnis gegen URL-Pattern und Name"""
+        """Validiert Suchergebnis gegen URL-Pattern und Name (lockerer Match)"""
         pattern = self.url_patterns.get(platform)
+        
+        # Tokenize lead names (only first part of vorname and last part of nachname matters)
+        parts_vorname = lead.vorname.split()
+        parts_nachname = lead.nachname.split()
+        
+        lead_first = parts_vorname[0].lower().strip(".,") if parts_vorname else ""
+        lead_last = parts_nachname[-1].lower().strip(".,") if parts_nachname else ""
+        
+        if not lead_first or not lead_last:
+            logger.warning(f"Konnte Namen nicht parsen: Vorname='{lead.vorname}', Nachname='{lead.nachname}'")
+            return None
         
         for result in results:
             # URL-Pattern prüfen
@@ -515,12 +522,22 @@ class LinkDiscovery:
                 continue
             
             # Name im Titel oder URL prüfen
-            text_to_check = (result.title + " " + result.url).lower()
-            vorname_lower = lead.vorname.lower()
-            nachname_lower = lead.nachname.lower()
+            # Normalisierung für robuste Umlaute/Akzente-Suche
+            # Wir normalisieren beide Seiten: den zu suchenden Namen und den Text im Ergebnis
+            text_to_check = normalize_string_for_matching(result.title + " " + result.url)
             
-            name_match = vorname_lower in text_to_check and nachname_lower in text_to_check
-            logger.debug(f"Name-Check: Vorname={vorname_lower in text_to_check}, Nachname={nachname_lower in text_to_check}")
+            # Loose match: Check if first token of first name and last token of last name are present
+            # This handles middle names/initials (e.g. "Mattias F. Neudecker" matches "Mattias" and "Neudecker")
+            
+            # Auch die Namens-Tokens normalisieren
+            lead_first_norm = normalize_string_for_matching(lead_first)
+            lead_last_norm = normalize_string_for_matching(lead_last)
+            
+            first_match = lead_first_norm in text_to_check
+            last_match = lead_last_norm in text_to_check
+            
+            name_match = first_match and last_match
+            logger.debug(f"Name-Check (Loose+Norm): First='{lead_first_norm}' in text? {first_match}, Last='{lead_last_norm}' in text? {last_match}")
             
             if name_match:
                 return result.url

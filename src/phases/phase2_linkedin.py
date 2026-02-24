@@ -20,6 +20,7 @@ class LinkedInPhase:
         self.config = config
         self.rate_limiter = rate_limiter
         self.valid_stufen = config.valid_stufen
+        self.company_name = config.company_name
     
     def process(self, page: Page, url: str, lead: Lead, flags: ProcessingFlags) -> Tuple[Optional[str], List[str], bool]:
         """
@@ -42,15 +43,15 @@ class LinkedInPhase:
             # Stufe zuerst aus Headline versuchen (oft sichtbar ohne Scroll; Experience lädt manchmal nicht)
             stufe = self._extract_stufe_from_headline(page)
             
-            # Tecis-Eintrag in Experience suchen (für präzise Stufe + Aktiv-Check)
-            tecis_entry = self._find_tecis_entry(page)
+            # Company-Eintrag in Experience suchen (für präzise Stufe + Aktiv-Check)
+            company_entry = self._find_company_entry(page)
             
-            if not tecis_entry:
+            if not company_entry:
                 if stufe:
                     logger.info(f"Stufe aus Headline: {stufe} (Experience-Sektion nicht gefunden)")
                     flags.stufe_gefunden = True
                 else:
-                    logger.info("Kein Tecis-Eintrag in LinkedIn Experience gefunden")
+                    logger.info(f"Kein {self.company_name}-Eintrag in LinkedIn Experience gefunden")
                 # Trotzdem Telefonnummern versuchen wenn nötig
                 telefonnummern = []
                 if not flags.telefonnummer_gefunden and not flags.nur_stufe_suchen:
@@ -60,16 +61,16 @@ class LinkedInPhase:
                 return stufe, telefonnummern, True
             
             # Status prüfen (Present/Heute)
-            ist_aktiv = self._check_active_status(tecis_entry)
+            ist_aktiv = self._check_active_status(company_entry)
             
             if not ist_aktiv:
-                logger.info("Person ist nicht mehr bei Tecis (ehemaliger Eintrag)")
+                logger.info(f"Person ist nicht mehr bei {self.company_name} (ehemaliger Eintrag)")
                 return None, [], False
             
-            logger.info("Person ist aktiv bei Tecis")
+            logger.info(f"Person ist aktiv bei {self.company_name}")
             
             # Stufe aus Experience-Eintrag (überschreibt Headline falls genauer)
-            stufe_from_entry = self._extract_stufe(tecis_entry)
+            stufe_from_entry = self._extract_stufe(company_entry)
             if stufe_from_entry:
                 stufe = stufe_from_entry
             
@@ -94,99 +95,77 @@ class LinkedInPhase:
             logger.error(f"Fehler beim Verarbeiten von LinkedIn-Profil: {e}")
             return None, [], True
     
-    def _find_tecis_entry(self, page: Page) -> Optional[any]:
-        """Findet den Tecis-Eintrag in der Experience-Sektion (mehrere DOM-Varianten).
-        Priorisiert den obersten/neuesten aktiven Eintrag bei mehreren Tecis-Positionen.
-        
-        Strategie (gemäß MD): Suche direkt nach <li> Elementen mit "tecis" im Text,
-        ohne vorher eine Experience-Section zu finden (robuster gegen DOM-Änderungen).
-        """
+    def _find_company_entry(self, page: Page) -> Optional[any]:
+        """Findet den Firmen-Eintrag in der Experience-Sektion."""
         try:
-            # Scroll runter, damit Experience lazy-loaded wird (oft unter dem Fold)
+            # Scroll runter
             page.wait_for_timeout(2000)
             page.evaluate("window.scrollTo(0, 600)")
             page.wait_for_timeout(1000)
             page.evaluate("window.scrollTo(0, 1200)")
             page.wait_for_timeout(1500)
             
-            # NEUE STRATEGIE (gemäß MD Zeile 497): Direkte XPath-Suche nach <li> mit "tecis"
-            # ohne vorherige Section-Suche
-            all_tecis_entries = []
+            all_entries = []
+            company_lower = self.company_name.lower()
+            company_upper = self.company_name.upper()
             
-            # Primäre Strategie: XPath wie in MD beschrieben
-            # //li[descendant::span[contains(text(), 'tecis Finanzdienstleistungen AG')]]
             try:
-                # Variante 1: Voller Firmenname
-                xpath_full = '//li[descendant::*[contains(translate(text(), "TECIS", "tecis"), "tecis finanzdienstleistungen")]]'
-                entries_full = page.query_selector_all(f'xpath={xpath_full}')
+                # Suche nach <li> die den Firmennamen enthalten
+                # translate() für case-insensitive check
+                xpath = f'//li[descendant::*[contains(translate(text(), "{company_upper}", "{company_lower}"), "{company_lower}")]]'
+                entries = page.query_selector_all(f'xpath={xpath}')
                 
-                if entries_full:
-                    all_tecis_entries.extend(entries_full)
+                if entries:
+                    all_entries.extend(entries)
                 
-                # Variante 2: Nur "tecis" (falls Firmenname abgekürzt)
-                if not all_tecis_entries:
-                    xpath_short = '//li[descendant::*[contains(translate(text(), "TECIS", "tecis"), "tecis")]]'
-                    entries_short = page.query_selector_all(f'xpath={xpath_short}')
-                    
-                    if entries_short:
-                        all_tecis_entries.extend(entries_short)
-                
-                # Variante 3: Auch <div> und <article> probieren (LinkedIn ändert oft die Struktur)
-                if not all_tecis_entries:
-                    xpath_div = '//*[self::div or self::article][descendant::*[contains(translate(text(), "TECIS", "tecis"), "tecis")]]'
+                # Fallback: div/article
+                if not all_entries:
+                    xpath_div = f'//*[self::div or self::article][descendant::*[contains(translate(text(), "{company_upper}", "{company_lower}"), "{company_lower}")]]'
                     entries_div = page.query_selector_all(f'xpath={xpath_div}')
-                    
                     if entries_div:
-                        all_tecis_entries.extend(entries_div)
+                        all_entries.extend(entries_div)
+                        
             except Exception as e:
                 logger.debug(f"XPath-Suche fehlgeschlagen: {e}")
             
             # Prüfe jeden gefundenen Eintrag auf nested Sub-Positionen
             final_entries = []
-            for li in all_tecis_entries:
+            for li in all_entries:
                 try:
-                    # Prüfe, ob dieses li Sub-Positionen (nested ul > li) enthält
                     nested_lis = li.query_selector_all('xpath=.//ul/li')
                     if nested_lis:
-                        # Das ist ein Container mit Sub-Positionen
-                        logger.debug(f"Container mit {len(nested_lis)} Sub-Positionen gefunden")
-                        # Füge alle Sub-Positionen hinzu (oberste = neueste)
                         for sub_li in nested_lis:
                             if sub_li not in final_entries:
                                 final_entries.append(sub_li)
                     else:
-                        # Das ist eine einzelne Position
                         if li not in final_entries:
                             final_entries.append(li)
                 except Exception:
                     pass
             
-            # --- Auswahl: Oberster Eintrag mit "heute" (oder erster falls keiner "heute" hat) ---
+            # Oberster Eintrag mit "heute"
             if final_entries:
-                logger.debug(f"{len(final_entries)} Tecis-Eintrag/Einträge gefunden")
-                
-                # Prüfe alle auf "heute" / "present"
+                logger.debug(f"{len(final_entries)} {self.company_name}-Eintrag/Einträge gefunden")
                 for entry in final_entries:
                     try:
                         text = entry.inner_text().lower()
                         if any(kw in text for kw in ['–heute', '- heute', 'present', 'current', 'bis heute', 'bis jetzt']):
-                            logger.debug("Aktiven Tecis-Eintrag gewählt (Heute/Present im Text)")
+                            logger.debug("Aktiven Eintrag gewählt (Heute/Present im Text)")
                             return entry
                     except Exception:
                         pass
-                # Fallback: Erster (oberster) Eintrag
-                logger.debug("Obersten Tecis-Eintrag gewählt (kein 'Heute' erkannt)")
+                logger.debug("Obersten Eintrag gewählt (kein 'Heute' erkannt)")
                 return final_entries[0]
             
         except PlaywrightTimeout:
             logger.debug("Experience-Sektion nicht gefunden (Timeout)")
         except Exception as e:
-            logger.debug(f"Fehler beim Suchen von Tecis-Eintrag: {e}")
+            logger.debug(f"Fehler beim Suchen von Firmen-Eintrag: {e}")
         
         return None
     
     def _check_active_status(self, entry) -> bool:
-        """Prüft ob Tecis-Eintrag noch aktiv ist (Present/Heute)"""
+        """Prüft ob Eintrag noch aktiv ist (Present/Heute)"""
         try:
             text = entry.inner_text()
             result = check_active_status(text)
@@ -195,13 +174,13 @@ class LinkedInPhase:
             return True  # Default: aktiv
     
     def _extract_stufe(self, entry) -> Optional[str]:
-        """Extrahiert Stufe aus Tecis-Eintrag in Berufserfahrung (Experience)."""
+        """Extrahiert Stufe aus Eintrag in Berufserfahrung (Experience)."""
         def clean(s: str) -> str:
             s = (s or "").strip().lstrip("|").strip()
             return s
 
         try:
-            # Verschiedene Selektoren für Jobtitel im Experience-Eintrag (LinkedIn DOM ändert sich)
+            # Verschiedene Selektoren für Jobtitel
             title_selectors = [
                 'xpath=.//span[@aria-hidden="true"][1]',
                 'xpath=.//div[contains(@class, "display-flex")]//span[1]',
@@ -213,7 +192,7 @@ class LinkedInPhase:
                 if el:
                     stufe_text = clean(el.inner_text())
                     if stufe_text:
-                        is_valid, category = categorize_stufe(stufe_text)
+                        is_valid, category = categorize_stufe(stufe_text, self.valid_stufen)
                         
                         if category in ["in_scope", "out_of_scope"]:
                             return stufe_text
@@ -226,13 +205,13 @@ class LinkedInPhase:
             for line_idx, line in enumerate(lines):
                 if not line or len(line) > 80:
                     continue
-                is_valid, category = categorize_stufe(line)
+                is_valid, category = categorize_stufe(line, self.valid_stufen)
                 if category in ["in_scope", "out_of_scope"]:
                     return line
-                # Zeile wie "Teamleiter bei tecis" → erstes Wort prüfen
+                
                 first_word = line.split()[0] if line.split() else ""
                 if first_word:
-                    is_valid, category = categorize_stufe(first_word)
+                    is_valid, category = categorize_stufe(first_word, self.valid_stufen)
                     if category in ["in_scope", "out_of_scope"]:
                         return first_word
 
@@ -241,9 +220,8 @@ class LinkedInPhase:
         return None
     
     def _extract_stufe_from_headline(self, page: Page) -> Optional[str]:
-        """Stufe aus der Profil-Headline (unter dem Namen, z.B. 'Teamleiter - tecis ...')"""
+        """Stufe aus der Profil-Headline"""
         try:
-            # Verschiedene LinkedIn-Headline-Selektoren (DOM ändert sich)
             headline_selectors = [
                 'div.top-card-layout__headline',
                 '[data-view-name="profileCard"] div.text-body-medium',
@@ -265,16 +243,16 @@ class LinkedInPhase:
             
             logger.debug(f"LinkedIn Headline: {headline_text[:80]}...")
             
-            # Headline oft "Teamleiter - tecis Finanz..." → Teile bei " - " und prüfe jeden Teil
+            # Teile bei " - " und prüfe jeden Teil
             for part in headline_text.replace("–", "-").split("-"):
                 part = part.strip()
-                is_valid, category = categorize_stufe(part)
+                is_valid, category = categorize_stufe(part, self.valid_stufen)
                 if category in ["in_scope", "out_of_scope"]:
                     return part
-                # Einzelne Wörter (falls "Teamleiter bei tecis" o.ä.)
+                # Einzelne Wörter
                 for word in part.split():
                     word = word.strip(".,")
-                    is_valid, category = categorize_stufe(word)
+                    is_valid, category = categorize_stufe(word, self.valid_stufen)
                     if category in ["in_scope", "out_of_scope"]:
                         return word
             
@@ -315,13 +293,11 @@ class LinkedInPhase:
             page.wait_for_timeout(1000)
             
             # Telefonnummer in Modal suchen
-            # XPath: Sektion mit h3 "Phone" oder "Telefon"
             phone_xpath = '//section[.//h3[contains(text(), "Phone") or contains(text(), "Telefon")]]//span'
             phone_elements = page.query_selector_all(f'xpath={phone_xpath}')
             
             for element in phone_elements:
                 text = element.inner_text().strip()
-                # Einfache Validierung: enthält Ziffern
                 if any(char.isdigit() for char in text) and len(text) > 5:
                     if text not in telefonnummern:
                         telefonnummern.append(text)
@@ -355,8 +331,9 @@ class LinkedInPhase:
             for link in website_links:
                 url = link.get_attribute('href')
                 
-                # Ignoriere tecis.de und linkedin.com
-                if not url or 'tecis.de' in url or 'linkedin.com' in url:
+                # Ignoriere Firmenseite (z.B. tecis.de) und linkedin.com
+                company_domain = self.config.company_name.lower().replace(" ", "")
+                if not url or company_domain in url.lower() or 'linkedin.com' in url:
                     continue
                 
                 logger.info(f"Prüfe externe Webseite: {url}")
@@ -373,7 +350,6 @@ class LinkedInPhase:
                     if impressum_link:
                         impressum_url = impressum_link.get_attribute('href')
                         if not impressum_url.startswith('http'):
-                            # Relative URL
                             from urllib.parse import urljoin
                             impressum_url = urljoin(url, impressum_url)
                         
@@ -394,14 +370,12 @@ class LinkedInPhase:
                                 if nummer and nummer not in telefonnummern:
                                     telefonnummern.append(nummer)
                         
-                        # Wenn gefunden, beende Suche
                         if telefonnummern:
                             break
                 
                 finally:
                     new_page.close()
                 
-                # Nur erste Webseite prüfen
                 break
         
         except Exception as e:
