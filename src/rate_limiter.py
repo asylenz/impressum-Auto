@@ -85,14 +85,9 @@ class RateLimiter:
         # LinkedIn: Tages- und Stundenlimits prüfen
         if platform == 'linkedin':
             daily_limit = self.config.get_limit('linkedin', 'max_profiles_per_day', 50)
-            hourly_limit = self.config.get_limit('linkedin', 'max_profiles_per_hour', 25)
             
             if state.get('daily', 0) >= daily_limit:
                 logger.warning(f"LinkedIn Tageslimit erreicht: {daily_limit}")
-                return False
-            
-            if state.get('hourly', 0) >= hourly_limit:
-                logger.warning(f"LinkedIn Stundenlimit erreicht: {hourly_limit}")
                 return False
         
         # Xing: Stundenlimit prüfen

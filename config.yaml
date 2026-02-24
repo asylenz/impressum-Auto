@@ -89,7 +89,6 @@ companies:
 limits:
   linkedin:
     max_profiles_per_day: 150
-    max_profiles_per_hour: 13
     delay_between_requests_min: 0
     delay_between_requests_max: 0
     pause_after_n_profiles: 20
