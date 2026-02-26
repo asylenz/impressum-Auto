@@ -69,7 +69,9 @@ companies:
         - "Manager"
         - "Direktor"
         - "Seniordirektor"
-      out_of_scope: []
+      out_of_scope:
+        - "Teamleiter"
+        - "Finanzberater-Trainee"
     
     url_pattern: "^https?://(?:www\\.)?swisslife-select\\.de/[a-zA-Z0-9-]+(?:(?:/kontaktuebersicht|/impressum)\\.html|\\.html)?$"
     
@@ -101,7 +103,10 @@ companies:
         - "Regionalmanager"
         - "Divisionalmanager"
         - "Generalmanager"
-      out_of_scope: []
+      out_of_scope:
+        - "Senior Consultant"
+        - "Junior Consultant"
+        - "Trainee"
     
     # Keine URL Pattern oder Selektoren nötig
     url_pattern: null
