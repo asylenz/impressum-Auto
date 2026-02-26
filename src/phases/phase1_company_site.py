@@ -72,6 +72,7 @@ class CompanySitePhase:
         def clean(t: str) -> str:
             return (t or "").strip().lstrip("|").strip()
         
+        first_candidate = None
         try:
             # Selektor(en) aus Config
             title_selectors = self.selectors.get('title')
@@ -103,6 +104,8 @@ class CompanySitePhase:
             if not stufe_text:
                 return None
             
+            first_candidate = stufe_text
+            
             # Prüfe ob Stufe bekannt ist (In Scope oder Out of Scope)
             is_valid, category = categorize_stufe(stufe_text, self.valid_stufen)
             if category in ["in_scope", "out_of_scope"]:
@@ -126,11 +129,11 @@ class CompanySitePhase:
                     logger.debug(f"Stufe '{stufe}' via Teilstring in '{stufe_text}' gefunden")
                     return stufe
             
-            logger.debug(f"Stufe '{stufe_text}' ist unbekannt (weder In Scope noch Out of Scope)")
+            logger.debug(f"Stufe '{stufe_text}' ist unbekannt – wird trotzdem eingetragen")
         except Exception as e:
             logger.debug(f"Fehler beim Extrahieren der Stufe: {e}")
         
-        return None
+        return first_candidate
     
     def _extract_telefonnummern(self, page: Page, base_url: str, lead: Lead) -> List[str]:
         """Extrahiert Telefonnummern von Kontaktseite, bei Bedarf auch aus Impressum."""

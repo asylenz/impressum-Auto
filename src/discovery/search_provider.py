@@ -385,6 +385,10 @@ class SerperGoogleSearch(SearchProvider):
             
             if response.status_code != 200:
                 logger.error(f"Serper API Fehler {response.status_code}: {response.text}")
+                if response.status_code == 400 and "Not enough credits" in response.text:
+                    logger.error("Serper API Credits sind aufgebraucht! Skript wird gestoppt.")
+                    import sys
+                    sys.exit(1)
                 return []
             
             data = response.json()
@@ -424,8 +428,9 @@ class LinkDiscovery:
         self.company_domain = config.company_config.get('domain', 'tecis.de')
         self.company_name = config.company_name
         
+        company_pattern = config.company_url_pattern
         self.url_patterns = {
-            'company': re.compile(config.company_url_pattern),
+            'company': re.compile(company_pattern) if company_pattern else None,
             'linkedin': re.compile(config.get('url_patterns.linkedin', r'^https?://(?:www\.)?linkedin\.com/in/[a-zA-Z0-9-]+/?$')),
             'xing': re.compile(config.get('url_patterns.xing', r'^https?://(?:www\.)?xing\.com/profile/[a-zA-Z0-9_]+/?$')),
             'creditreform': re.compile(config.get('url_patterns.creditreform', r'^https?://firmeneintrag\.creditreform\.de/\d+/\d+/.+$'))
@@ -491,17 +496,25 @@ class LinkDiscovery:
         
         name_query = f"{lead_first} {lead_last}"
         
-        return {
-            'company': f'site:{self.company_domain} {name_query}',
+        queries = {
             'linkedin': f'site:linkedin.com/in/ "{name_query}" {self.company_name}',
             'xing': f'site:xing.com/profile "{name_query}" {self.company_name}',
             'creditreform': f'site:firmeneintrag.creditreform.de "{name_query}" Versicherungsmakler'
         }
+        
+        if self.company_domain:
+            queries['company'] = f'site:{self.company_domain} {name_query}'
+            
+        return queries
     
     def _validate_result(self, results: List[SearchResult], platform: str, lead: Lead) -> Optional[str]:
         """Validiert Suchergebnis gegen URL-Pattern und Name (lockerer Match)"""
         pattern = self.url_patterns.get(platform)
         
+        # Falls kein Pattern für die Plattform existiert (z.B. Company ohne URL-Pattern), abbrechen
+        if not pattern and platform == 'company':
+            return None
+
         # Tokenize lead names (only first part of vorname and last part of nachname matters)
         parts_vorname = lead.vorname.split()
         parts_nachname = lead.nachname.split()

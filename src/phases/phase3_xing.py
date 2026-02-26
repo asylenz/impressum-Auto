@@ -137,6 +137,7 @@ class XingPhase:
     
     def _extract_stufe(self, entry) -> Optional[str]:
         """Extrahiert Stufe aus Eintrag"""
+        first_candidate = None
         try:
             # data-mds="Headline" - Xing-Spezifikation
             stufe_element = entry.query_selector(f'h4[{XING_HEADLINE_ATTR}="{XING_HEADLINE_VALUE}"]')
@@ -157,6 +158,7 @@ class XingPhase:
                         return h ? h.innerText.trim() : null;
                     }''')
                     if stufe_text_raw:
+                        first_candidate = stufe_text_raw
                         is_valid, category = categorize_stufe(stufe_text_raw, self.valid_stufen)
                         if category in ["in_scope", "out_of_scope"]:
                             return stufe_text_raw
@@ -165,12 +167,13 @@ class XingPhase:
             
             if stufe_element:
                 stufe_text = stufe_element.inner_text().strip()
+                first_candidate = stufe_text
                 is_valid, category = categorize_stufe(stufe_text, self.valid_stufen)
                 if category in ["in_scope", "out_of_scope"]:
                     return stufe_text
-                logger.debug(f"Stufe '{stufe_text}' - Kategorie: {category}")
+                logger.debug(f"Stufe '{stufe_text}' - Kategorie: {category} – wird trotzdem eingetragen")
         
         except Exception as e:
             logger.debug(f"Fehler beim Extrahieren der Stufe: {e}")
         
-        return None
+        return first_candidate

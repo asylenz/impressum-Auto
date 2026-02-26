@@ -424,8 +424,9 @@ browser:
 # Standard-Modus (Tecis)
 python main.py
 
-# Oder spezifischer Modus (z.B. Swiss Life Select)
+# Oder spezifischer Modus (z.B. Swiss Life Select oder TauRes)
 python main.py --mode swiss_life_select
+python main.py --mode taures
 ```
 
 ### 6.3 Was jetzt passiert

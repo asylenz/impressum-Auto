@@ -12,7 +12,7 @@ from src.models import Lead, LeadResult, ProcessingFlags
 from src.rate_limiter import RateLimiter, RateLimitExceeded
 from src.linkedin_auth import LinkedInAuth
 from src.discovery import LinkDiscovery
-from src.phases import CompanySitePhase, LinkedInPhase, XingPhase, CreditreformPhase
+from src.phases import CompanySitePhase, LinkedInPhase, XingPhase, CreditreformPhase, LushaPhase
 from src.constants import STATUS_WECHSEL, STATUS_UNGUELTIG, STATUS_UNBEKANNT, TEL_KEINE, TEL_NA, STUFE_NA
 from src.utils import categorize_stufe
 
@@ -32,6 +32,7 @@ class CompanyBot:
         self.linkedin_phase = LinkedInPhase(config, self.rate_limiter)
         self.xing_phase = XingPhase(config, self.rate_limiter)
         self.creditreform_phase = CreditreformPhase(config, self.rate_limiter)
+        self.lusha_phase = LushaPhase(config, self.rate_limiter)
         
         # Browser-Context (wird pro Batch wiederverwendet)
         self.playwright = None
@@ -103,30 +104,34 @@ class CompanyBot:
                 stufe, telefonnummern = self._phase1_company_site(result, flags)
                 
                 if stufe:
-                    result.stufe = stufe
+                    self._set_stufe_if_better(result, stufe, prio=1)
                 if telefonnummern:
                     result.telefonnummer = telefonnummern[0] if len(telefonnummern) > 0 else ""
                     result.zweite_telefonnummer = telefonnummern[1] if len(telefonnummern) > 1 else ""
+                    result.tel_quelle = "Firmenseite"
                 
                 # 3. Phase 2: LinkedIn (falls nötig)
                 if not flags.telefonnummer_gefunden or not flags.stufe_gefunden:
-                    stufe_li, tel_li, ist_aktiv = self._phase2_linkedin(result, flags)
+                    stufe_entry_li, stufe_headline_li, tel_li, ist_aktiv = self._phase2_linkedin(result, flags)
                     
-                    # Status wird nicht gesetzt (nur Stufe/Telefon)
-                    if stufe_li and not result.stufe:
-                        result.stufe = stufe_li
+                    # Entry (Prio 2) hat Vorrang vor Headline (Prio 3)
+                    if stufe_entry_li:
+                        self._set_stufe_if_better(result, stufe_entry_li, prio=2)
+                    elif stufe_headline_li:
+                        self._set_stufe_if_better(result, stufe_headline_li, prio=3)
                     
                     if tel_li and not result.telefonnummer:
                         result.telefonnummer = tel_li[0] if len(tel_li) > 0 else ""
                         result.zweite_telefonnummer = tel_li[1] if len(tel_li) > 1 else ""
+                        result.tel_quelle = "LinkedIn"
                 
                 # 4. Phase 3: Xing (falls nötig)
                 if not flags.stufe_gefunden or (flags.status_check_weiter_creditreform or flags.stufe_suchen_weiter_creditreform):
                     stufe_xing, ist_aktiv_xing = self._phase3_xing(result, flags)
                     
-                    # Status wird nicht gesetzt (nur Stufe/Telefon)
-                    if stufe_xing and not result.stufe:
-                        result.stufe = stufe_xing
+                    # Xing gibt nur Entry-Stufe zurück (Prio 2, gleichwertig mit LinkedIn Entry)
+                    if stufe_xing:
+                        self._set_stufe_if_better(result, stufe_xing, prio=2)
                 
                 # 5. Phase 4: Creditreform (falls Telefon fehlt aber Stufe vorhanden)
                 if not flags.telefonnummer_gefunden and (flags.stufe_gefunden or result.stufe):
@@ -135,12 +140,64 @@ class CompanyBot:
                     if tel_cr and not result.telefonnummer:
                         result.telefonnummer = tel_cr[0] if len(tel_cr) > 0 else ""
                         result.zweite_telefonnummer = tel_cr[1] if len(tel_cr) > 1 else ""
+                        result.tel_quelle = "Creditreform"
             
-            # 6. Output-Mapping (Appendix A)
+            # 6. Phase 5: Lusha (Fallback – außerhalb des Browser-Kontexts, da reine API)
+            need_phone = not result.telefonnummer
+            need_stufe = not result.stufe
+            # Guard 1: Nur aufrufen wenn Person als aktiv bestätigt ist
+            person_confirmed_active = (
+                flags.status_active_confirmed or bool(result.target_url_company)
+            ) and result.status != STATUS_WECHSEL
+            
+            if person_confirmed_active and (need_phone or need_stufe):
+                if need_stufe:
+                    # Schritt 1: erst Stufe suchen – kein Telefon-Lookup ohne validierte Stufe
+                    _, stufe_lusha = self._phase5_lusha(
+                        result, flags,
+                        linkedin_url=result.target_url_linkedin,
+                        need_phone=False,
+                        need_stufe=True,
+                    )
+                    if stufe_lusha:
+                        self._set_stufe_if_better(result, stufe_lusha, prio=4)
+                        flags.stufe_gefunden = True
+                        # Schritt 2: nur bei validierter (in_scope/out_of_scope) Stufe Telefon suchen
+                        if need_phone:
+                            _, stufe_cat = categorize_stufe(stufe_lusha, self.config.valid_stufen)
+                            if stufe_cat in ("in_scope", "out_of_scope"):
+                                tel_lusha, _ = self._phase5_lusha(
+                                    result, flags,
+                                    linkedin_url=result.target_url_linkedin,
+                                    need_phone=True,
+                                    need_stufe=False,
+                                )
+                                if tel_lusha:
+                                    result.telefonnummer = tel_lusha[0]
+                                    result.zweite_telefonnummer = tel_lusha[1] if len(tel_lusha) > 1 else ""
+                                    result.tel_quelle = "Lusha"
+                    # Kein else: kein Telefon-Lookup wenn Lusha keine Stufe gefunden hat
+                else:
+                    # Stufe aus Phasen 1–4 vorhanden → nur Telefon suchen wenn Stufe validiert
+                    if need_phone:
+                        _, stufe_cat = categorize_stufe(result.stufe, self.config.valid_stufen)
+                        if stufe_cat in ("in_scope", "out_of_scope"):
+                            tel_lusha, _ = self._phase5_lusha(
+                                result, flags,
+                                linkedin_url=result.target_url_linkedin,
+                                need_phone=True,
+                                need_stufe=False,
+                            )
+                            if tel_lusha:
+                                result.telefonnummer = tel_lusha[0]
+                                result.zweite_telefonnummer = tel_lusha[1] if len(tel_lusha) > 1 else ""
+                                result.tel_quelle = "Lusha"
+            
+            # 7. Output-Mapping (Appendix A)
             self._apply_output_logic(result)
             
             logger.info(f"=== Verarbeitung abgeschlossen: {lead.full_name} ===")
-            logger.info(f"Ergebnis: Tel={result.telefonnummer}, Stufe={result.stufe}, Zielgruppe={result.zielgruppe}")
+            logger.info(f"Ergebnis: Tel={result.telefonnummer}, Stufe={result.stufe}, Zielgruppe={result.zielgruppe}, Quelle={result.tel_quelle}")
             
             return result
             
@@ -157,6 +214,29 @@ class CompanyBot:
         result.telefonnummer = TEL_NA
         result.zweite_telefonnummer = ""
         result.stufe = STUFE_NA
+    
+    def _set_stufe_if_better(self, result: LeadResult, candidate: str, prio: int) -> bool:
+        """
+        Setzt Stufe nur wenn candidate eine höhere Priorität hat als die aktuelle Stufe.
+        Prio: 1=Firmenseite, 2=Entry (LinkedIn/Xing), 3=Headline (LinkedIn), 4=Lusha.
+        Validierte Stufen (in_scope/out_of_scope) werden nie durch unvalidierte überschrieben.
+        """
+        if not candidate:
+            return False
+        if result.stufe:
+            _, current_cat = categorize_stufe(result.stufe, self.config.valid_stufen)
+            _, cand_cat = categorize_stufe(candidate, self.config.valid_stufen)
+            # Validierte durch unvalidierte nie überschreiben
+            if current_cat in ("in_scope", "out_of_scope") and cand_cat == "unknown":
+                logger.debug(f"Stufe-Kandidat '{candidate}' (Prio {prio}) verworfen – aktuelle Stufe '{result.stufe}' ist validiert")
+                return False
+        # Nur setzen wenn noch keine Stufe vorhanden oder neue Prio besser ist
+        if not result.stufe or prio < result.stufe_prio:
+            logger.debug(f"Stufe gesetzt: '{candidate}' (Prio {prio}, vorher: '{result.stufe}' Prio {result.stufe_prio})")
+            result.stufe = candidate
+            result.stufe_prio = prio
+            return True
+        return False
     
     def _phase1_company_site(self, result: LeadResult, flags: ProcessingFlags) -> Tuple[Optional[str], List[str]]:
         """Phase 1: Firmenseite"""
@@ -178,10 +258,10 @@ class CompanyBot:
         return stufe, telefonnummern
     
     def _phase2_linkedin(self, result: LeadResult, flags: ProcessingFlags):
-        """Phase 2: LinkedIn"""
+        """Phase 2: LinkedIn – gibt (stufe_entry, stufe_headline, telefonnummern, ist_aktiv) zurück"""
         if not result.target_url_linkedin:
             logger.info("Phase 2: Keine LinkedIn-URL -> Überspringe")
-            return None, [], True
+            return None, None, [], True
         
         logger.info("--- Phase 2: LinkedIn ---")
         
@@ -190,10 +270,10 @@ class CompanyBot:
             if not self.linkedin_auth.is_logged_in(self.page, result.target_url_linkedin):
                 if not self.linkedin_auth.login(self.context, self.page):
                     logger.error("LinkedIn-Login fehlgeschlagen (2FA/Captcha im Headless oft nicht möglich)")
-                    return None, [], True
+                    return None, None, [], True
             self.linkedin_logged_in = True
         
-        stufe, telefonnummern, ist_aktiv = self.linkedin_phase.process(
+        stufe_entry, stufe_headline, telefonnummern, ist_aktiv = self.linkedin_phase.process(
             self.page, result.target_url_linkedin, result.lead, flags
         )
         
@@ -201,14 +281,14 @@ class CompanyBot:
         # Existiert eine Company-Seite, ist die Person dort gelistet = aktiv (Company ist maßgeblich).
         if not ist_aktiv and not result.target_url_company:
             self._set_inactive_status(result)
-            return None, [], False
+            return None, None, [], False
         if not ist_aktiv and result.target_url_company:
             logger.info(f"LinkedIn: Eintrag ohne 'Heute', aber {self.company_name}-Seite vorhanden → behandle als aktiv, behalte Daten")
         
         # Status-Flag setzen (nur wenn aktiv oder Company-Seite vorhanden)
         flags.status_active_confirmed = True
         
-        return stufe, telefonnummern, ist_aktiv
+        return stufe_entry, stufe_headline, telefonnummern, ist_aktiv
     
     def _phase3_xing(self, result: LeadResult, flags: ProcessingFlags):
         """Phase 3: Xing"""
@@ -245,6 +325,24 @@ class CompanyBot:
         
         return telefonnummern
     
+    def _phase5_lusha(
+        self,
+        result: LeadResult,
+        flags: ProcessingFlags,
+        linkedin_url: Optional[str] = None,
+        need_phone: bool = True,
+        need_stufe: bool = True,
+    ) -> Tuple[List[str], Optional[str]]:
+        """Phase 5: Lusha API – Fallback für Telefon und Stufe"""
+        logger.info("--- Phase 5: Lusha ---")
+        return self.lusha_phase.process(
+            result.lead,
+            flags,
+            linkedin_url=linkedin_url,
+            need_phone=need_phone,
+            need_stufe=need_stufe,
+        )
+    
     def _apply_output_logic(self, result: LeadResult) -> None:
         """
         Wendet Appendix A Output-Logik an
@@ -252,7 +350,7 @@ class CompanyBot:
         has_telefon = bool(result.telefonnummer and result.telefonnummer not in ["", TEL_KEINE, TEL_NA])
         has_stufe = bool(result.stufe and result.stufe not in ["", STUFE_NA])
 
-        # Prüfe ob Stufe Out of Scope ist (bekannt aber nicht Zielgruppe)
+        # Prüfe ob Stufe bekannt ist (In Scope, Out of Scope oder unknown)
         if has_stufe:
             is_valid, category = categorize_stufe(result.stufe, self.config.valid_stufen)
             
@@ -269,6 +367,16 @@ class CompanyBot:
                     result.telefonnummer = TEL_KEINE
                     result.zweite_telefonnummer = ""
                 return  # Fertig, Status ist gesetzt
+            elif category == "unknown":
+                # Stufe-Text bleibt erhalten (wird ins Sheet geschrieben), Zielgruppe = Unbekannt
+                result.zielgruppe = STATUS_UNBEKANNT
+                logger.info(f"Stufe '{result.stufe}' ist unbekannt → Zielgruppe=Unbekannt, Stufe-Text bleibt erhalten")
+                if result.status != STATUS_WECHSEL:
+                    result.status = STATUS_UNBEKANNT
+                if not has_telefon:
+                    result.telefonnummer = TEL_KEINE
+                    result.zweite_telefonnummer = ""
+                return  # Fertig
 
         # Szenario 2: Telefon vorhanden, aber keine gültige Stufe (Spec: Status "Unbekannt")
         if has_telefon and not has_stufe:

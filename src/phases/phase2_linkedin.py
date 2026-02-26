@@ -22,13 +22,15 @@ class LinkedInPhase:
         self.valid_stufen = config.valid_stufen
         self.company_name = config.company_name
     
-    def process(self, page: Page, url: str, lead: Lead, flags: ProcessingFlags) -> Tuple[Optional[str], List[str], bool]:
+    def process(self, page: Page, url: str, lead: Lead, flags: ProcessingFlags) -> Tuple[Optional[str], Optional[str], List[str], bool]:
         """
         Verarbeitet LinkedIn-URL
-        Gibt (Stufe, [Telefonnummern], ist_aktiv) zurück
+        Gibt (stufe_entry, stufe_headline, [Telefonnummern], ist_aktiv) zurück.
+        stufe_entry    = Stufe aus Experience-Eintrag (Prio 2), None wenn nicht gefunden
+        stufe_headline = Stufe aus Profil-Headline (Prio 3), None wenn nicht gefunden
         """
         if not url:
-            return None, [], True  # Default: aktiv
+            return None, None, [], True  # Default: aktiv
         
         try:
             logger.info(f"Öffne LinkedIn-Profil: {url}")
@@ -40,15 +42,15 @@ class LinkedInPhase:
             page.goto(url, wait_until='domcontentloaded')
             page.wait_for_timeout(2000)  # Kurze Pause für JS-Rendering
             
-            # Stufe zuerst aus Headline versuchen (oft sichtbar ohne Scroll; Experience lädt manchmal nicht)
-            stufe = self._extract_stufe_from_headline(page)
+            # Headline-Stufe merken (Prio 3 – Fallback wenn kein Entry gefunden)
+            stufe_headline = self._extract_stufe_from_headline(page)
             
             # Company-Eintrag in Experience suchen (für präzise Stufe + Aktiv-Check)
             company_entry = self._find_company_entry(page)
             
             if not company_entry:
-                if stufe:
-                    logger.info(f"Stufe aus Headline: {stufe} (Experience-Sektion nicht gefunden)")
+                if stufe_headline:
+                    logger.info(f"Stufe aus Headline: {stufe_headline} (Experience-Sektion nicht gefunden)")
                     flags.stufe_gefunden = True
                 else:
                     logger.info(f"Kein {self.company_name}-Eintrag in LinkedIn Experience gefunden")
@@ -58,27 +60,29 @@ class LinkedInPhase:
                     telefonnummern = self._extract_contact_info(page, lead)
                     if telefonnummern:
                         flags.telefonnummer_gefunden = True
-                return stufe, telefonnummern, True
+                # Kein Entry → stufe_entry=None, stufe_headline kann gesetzt sein
+                return None, stufe_headline, telefonnummern, True
             
             # Status prüfen (Present/Heute)
             ist_aktiv = self._check_active_status(company_entry)
             
             if not ist_aktiv:
                 logger.info(f"Person ist nicht mehr bei {self.company_name} (ehemaliger Eintrag)")
-                return None, [], False
+                return None, None, [], False
             
             logger.info(f"Person ist aktiv bei {self.company_name}")
             
-            # Stufe aus Experience-Eintrag (überschreibt Headline falls genauer)
-            stufe_from_entry = self._extract_stufe(company_entry)
-            if stufe_from_entry:
-                stufe = stufe_from_entry
+            # Stufe aus Experience-Eintrag (Prio 2 – hat Vorrang vor Headline)
+            stufe_entry = self._extract_stufe(company_entry)
             
-            if stufe:
-                logger.info(f"Stufe gefunden: {stufe}")
+            if stufe_entry:
+                logger.info(f"Stufe aus Entry gefunden: {stufe_entry}")
+                flags.stufe_gefunden = True
+            elif stufe_headline:
+                logger.info(f"Stufe aus Headline (Fallback): {stufe_headline}")
                 flags.stufe_gefunden = True
             else:
-                logger.info("Keine gültige Stufe in LinkedIn gefunden")
+                logger.info("Keine Stufe in LinkedIn gefunden")
             
             # Telefonnummern nur holen wenn noch keine vorhanden
             telefonnummern = []
@@ -89,45 +93,83 @@ class LinkedInPhase:
                     logger.info(f"{len(telefonnummern)} Telefonnummer(n) gefunden")
                     flags.telefonnummer_gefunden = True
             
-            return stufe, telefonnummern, ist_aktiv
+            return stufe_entry, stufe_headline, telefonnummern, ist_aktiv
             
         except Exception as e:
             logger.error(f"Fehler beim Verarbeiten von LinkedIn-Profil: {e}")
-            return None, [], True
+            return None, None, [], True
     
     def _find_company_entry(self, page: Page) -> Optional[any]:
         """Findet den Firmen-Eintrag in der Experience-Sektion."""
         try:
-            # Scroll runter
+            # Scroll runter – weiter scrollen damit Experience-Sektion lazy-geladen wird
             page.wait_for_timeout(2000)
             page.evaluate("window.scrollTo(0, 600)")
             page.wait_for_timeout(1000)
-            page.evaluate("window.scrollTo(0, 1200)")
+            page.evaluate("window.scrollTo(0, 1500)")
+            page.wait_for_timeout(1000)
+            page.evaluate("window.scrollTo(0, 2500)")
             page.wait_for_timeout(1500)
-            
-            all_entries = []
+            page.evaluate("window.scrollTo(0, 1200)")
+            page.wait_for_timeout(1000)
+
             company_lower = self.company_name.lower()
             company_upper = self.company_name.upper()
-            
+
+            # --- Primäransatz: Experience-Überschrift gezielt warten und Section targetieren ---
+            # Warte auf "Experience"/"Berufserfahrung"-Heading (lazy-load)
+            exp_heading_selectors = [
+                'xpath=//h2[normalize-space(text())="Experience"]',
+                'xpath=//h2[normalize-space(text())="Berufserfahrung"]',
+                'xpath=//h2[normalize-space(text())="Arbeitserfahrung"]',
+                'xpath=//h3[normalize-space(text())="Experience"]',
+                'xpath=//h3[normalize-space(text())="Berufserfahrung"]',
+            ]
+            for sel in exp_heading_selectors:
+                try:
+                    page.wait_for_selector(sel, timeout=3000)
+                    logger.debug(f"Experience-Heading gefunden: {sel}")
+                    break
+                except PlaywrightTimeout:
+                    continue
+                except Exception:
+                    continue
+
+            # Experience-Section via Heading finden und direkt als Eintrag nutzen
+            exp_section_xpaths = [
+                f'xpath=//h2[normalize-space(text())="Experience"]/ancestor::section[1]',
+                f'xpath=//h2[normalize-space(text())="Berufserfahrung"]/ancestor::section[1]',
+                f'xpath=//h2[normalize-space(text())="Arbeitserfahrung"]/ancestor::section[1]',
+                f'xpath=//h3[normalize-space(text())="Experience"]/ancestor::section[1]',
+                f'xpath=//h3[normalize-space(text())="Berufserfahrung"]/ancestor::section[1]',
+            ]
+            for xpath in exp_section_xpaths:
+                try:
+                    exp_section = page.query_selector(xpath)
+                    if exp_section:
+                        exp_text = exp_section.inner_text()
+                        if company_lower in exp_text.lower():
+                            logger.debug(f"Experience-Sektion via Heading gefunden ({len(exp_text)} Zeichen)")
+                            return exp_section
+                except Exception:
+                    continue
+
+            # --- Fallback: breite XPath-Suche (wie bisher, aber mit Filtern) ---
+            all_entries = []
             try:
-                # Suche nach <li> die den Firmennamen enthalten
-                # translate() für case-insensitive check
                 xpath = f'//li[descendant::*[contains(translate(text(), "{company_upper}", "{company_lower}"), "{company_lower}")]]'
                 entries = page.query_selector_all(f'xpath={xpath}')
-                
                 if entries:
                     all_entries.extend(entries)
-                
-                # Fallback: div/article
+
                 if not all_entries:
-                    xpath_div = f'//*[self::div or self::article][descendant::*[contains(translate(text(), "{company_upper}", "{company_lower}"), "{company_lower}")]]'
+                    xpath_div = f'//*[self::div or self::article or self::section][descendant::*[contains(translate(text(), "{company_upper}", "{company_lower}"), "{company_lower}")]]'
                     entries_div = page.query_selector_all(f'xpath={xpath_div}')
                     if entries_div:
                         all_entries.extend(entries_div)
-                        
             except Exception as e:
                 logger.debug(f"XPath-Suche fehlgeschlagen: {e}")
-            
+
             # Prüfe jeden gefundenen Eintrag auf nested Sub-Positionen
             final_entries = []
             for li in all_entries:
@@ -142,10 +184,24 @@ class LinkedInPhase:
                             final_entries.append(li)
                 except Exception:
                     pass
-            
-            # Oberster Eintrag mit "heute"
+
+            # Filter: nur Experience-ähnliche Einträge (Jahreszahl + < 1500 Zeichen)
+            import re as _re
+            final_entries = [
+                e for e in final_entries
+                if (lambda t: company_lower in t.lower() and _re.search(r'\b20\d\d\b', t) and len(t) < 1500)(
+                    e.inner_text() if callable(getattr(e, 'inner_text', None)) else ""
+                )
+            ]
+
+            # Sortiere nach Länge aufsteigend: spezifische Einträge vor breiten Wrappern
+            try:
+                final_entries.sort(key=lambda e: len(e.inner_text()))
+            except Exception:
+                pass
+
             if final_entries:
-                logger.debug(f"{len(final_entries)} {self.company_name}-Eintrag/Einträge gefunden")
+                logger.debug(f"{len(final_entries)} {self.company_name}-Eintrag/Einträge gefunden (Fallback)")
                 for entry in final_entries:
                     try:
                         text = entry.inner_text().lower()
@@ -156,12 +212,12 @@ class LinkedInPhase:
                         pass
                 logger.debug("Obersten Eintrag gewählt (kein 'Heute' erkannt)")
                 return final_entries[0]
-            
+
         except PlaywrightTimeout:
             logger.debug("Experience-Sektion nicht gefunden (Timeout)")
         except Exception as e:
             logger.debug(f"Fehler beim Suchen von Firmen-Eintrag: {e}")
-        
+
         return None
     
     def _check_active_status(self, entry) -> bool:
@@ -179,6 +235,7 @@ class LinkedInPhase:
             s = (s or "").strip().lstrip("|").strip()
             return s
 
+        first_candidate = None
         try:
             # Verschiedene Selektoren für Jobtitel
             title_selectors = [
@@ -192,22 +249,46 @@ class LinkedInPhase:
                 if el:
                     stufe_text = clean(el.inner_text())
                     if stufe_text:
+                        if first_candidate is None:
+                            first_candidate = stufe_text
                         is_valid, category = categorize_stufe(stufe_text, self.valid_stufen)
                         
                         if category in ["in_scope", "out_of_scope"]:
                             return stufe_text
                         logger.debug(f"Stufe-Kandidat: '{stufe_text}' (Kategorie: {category})")
 
-            # Fallback: Alle Zeilen des Eintrags durchgehen
+            # Fallback: Alle Zeilen des Eintrags durchgehen.
             full_text = entry.inner_text()
             lines = [clean(line) for line in full_text.split('\n') if line.strip()]
             
+            # Bei kleinen Einträgen (< 500 Zeichen = gezielter Experience-Eintrag) darf
+            # first_candidate aus dem Zeilen-Loop gesetzt werden. Bei großen Einträgen
+            # (> 500 Zeichen = breite Seiten-Wrapper) wird es nicht gesetzt, um
+            # Personennamen als erste Zeile zu vermeiden.
+            allow_line_candidate = len(full_text) < 500
+            _section_headings = {"experience", "berufserfahrung", "arbeitserfahrung"}
+            
             for line_idx, line in enumerate(lines):
-                if not line or len(line) > 80:
+                if not line or len(line) > 150:
                     continue
                 is_valid, category = categorize_stufe(line, self.valid_stufen)
                 if category in ["in_scope", "out_of_scope"]:
                     return line
+                
+                # "Jobtitel bei Firma" → Jobtitel als first_candidate extrahieren
+                if first_candidate is None and " bei " in line.lower():
+                    bei_idx = line.lower().index(" bei ")
+                    job_part = line[:bei_idx].strip()
+                    if job_part and len(job_part) > 3:
+                        is_valid, cat = categorize_stufe(job_part, self.valid_stufen)
+                        if cat in ["in_scope", "out_of_scope"]:
+                            return job_part
+                        first_candidate = job_part
+                
+                # Kleine Einträge: erste bedeutungsvolle Zeile als Kandidat merken
+                if allow_line_candidate and first_candidate is None:
+                    if line.lower().strip() not in _section_headings and len(line) > 3:
+                        first_candidate = line
                 
                 first_word = line.split()[0] if line.split() else ""
                 if first_word:
@@ -217,7 +298,7 @@ class LinkedInPhase:
 
         except Exception as e:
             logger.debug(f"Fehler beim Extrahieren der Stufe: {e}")
-        return None
+        return first_candidate
     
     def _extract_stufe_from_headline(self, page: Page) -> Optional[str]:
         """Stufe aus der Profil-Headline"""
@@ -243,6 +324,18 @@ class LinkedInPhase:
             
             logger.debug(f"LinkedIn Headline: {headline_text[:80]}...")
             
+            # Extrahiere Jobtitel-Teil bei "Titel bei Firma"-Format (deutsches LinkedIn)
+            # z.B. "Senior Produktmanager Vorsorge bei TauRes Gesellschaft..." → "Senior Produktmanager Vorsorge"
+            headline_candidate = None
+            if " bei " in headline_text.lower():
+                bei_idx = headline_text.lower().index(" bei ")
+                job_part = headline_text[:bei_idx].strip()
+                if job_part and len(job_part) < 100:
+                    headline_candidate = job_part
+                    is_valid, category = categorize_stufe(job_part, self.valid_stufen)
+                    if category in ["in_scope", "out_of_scope"]:
+                        return job_part
+            
             # Teile bei " - " und prüfe jeden Teil
             for part in headline_text.replace("–", "-").split("-"):
                 part = part.strip()
@@ -256,7 +349,8 @@ class LinkedInPhase:
                     if category in ["in_scope", "out_of_scope"]:
                         return word
             
-            return None
+            # Fallback: Jobtitel-Teil aus "bei"-Split als unbekannte Stufe zurückgeben
+            return headline_candidate
         except Exception as e:
             logger.debug(f"Fehler beim Headline-Stufe-Extract: {e}")
             return None

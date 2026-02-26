@@ -53,6 +53,7 @@ companies:
     suffixes:
       kontakt: "/kontaktuebersicht.html"
       impressum: "/impressum.html"
+    lusha_company_name: "tecis"
 
   swiss_life_select:
     name: "Swiss Life Select"
@@ -84,6 +85,31 @@ companies:
     suffixes:
       kontakt: "/kontaktuebersicht.html"
       impressum: "/impressum.html"
+    lusha_company_name: "swiss life select"
+
+  taures:
+    name: "TauRes"
+    # Keine Unternehmensseite vorhanden
+    domain: null
+    sheet_aliases:
+      - "TauRes"
+      - "TauRes Gesellschaft für Investmentberatung mbH"
+    stufen:
+      in_scope:
+        - "Chief Consultant"
+        - "Branchmanager"
+        - "Regionalmanager"
+        - "Divisionalmanager"
+        - "Generalmanager"
+      out_of_scope: []
+    
+    # Keine URL Pattern oder Selektoren nötig
+    url_pattern: null
+    selectors:
+      title: []
+      contact_links: []
+    suffixes: {}
+    lusha_company_name: "TauRes"
 
 # Rate-Limits (pro Plattform)
 limits:
@@ -106,6 +132,10 @@ limits:
   company_site: # Generisches Rate limit für Firmenseiten
     delay_between_requests_min: 1
     delay_between_requests_max: 3
+
+  lusha: # Lusha API Rate limit
+    delay_between_requests_min: 1
+    delay_between_requests_max: 2
 
   google_search:
     delay_between_requests_min: 1
@@ -142,7 +172,7 @@ url_patterns:
 
 # Google Sheets
 sheets:
-  sheet_name: "Tecis"
+  sheet_name: "Leads"
   input_columns:
     full_name: "Full Name"
     unternehmen: "Company"
@@ -151,6 +181,7 @@ sheets:
     zweite_telefonnummer: "Zweite Telefonnummer"
     stufe: "Stufe"
     zielgruppe: "Zielgruppe"
+    tel_quelle: "Tel. Quelle"
   header_row: 1
   data_start_row: 2
   skip_already_processed: true

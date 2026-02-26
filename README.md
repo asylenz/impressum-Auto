@@ -285,8 +285,12 @@ valid_stufen:
 source venv/bin/activate  # macOS/Linux
 # venv\Scripts\activate  # Windows
 
-# Bot starten
+# Bot starten (Standard: Tecis)
 python main.py
+
+# Bot mit spezifischem Modus starten (z.B. Swiss Life Select oder TauRes)
+python main.py --mode swiss_life_select
+python main.py --mode taures
 ```
 
 **Was der Bot macht:**

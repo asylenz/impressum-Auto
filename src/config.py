@@ -84,6 +84,11 @@ class Config:
     def company_name(self) -> str:
         """Name der aktuellen Firma"""
         return self.company_config.get('name', self.mode)
+        
+    @property
+    def lusha_company_name(self) -> str:
+        """Name der Firma für die Lusha API Suche"""
+        return self.company_config.get('lusha_company_name', self.company_name)
     
     @property
     def company_aliases(self) -> List[str]:

@@ -211,6 +211,7 @@ class SheetsIO:
             tel2_col = output_cols.get('zweite_telefonnummer', 'Zweite Telefonnummer')
             stufe_col = output_cols.get('stufe', 'Stufe/Position')
             zielgruppe_col = output_cols.get('zielgruppe', 'Zielgruppe')
+            tel_quelle_col = output_cols.get('tel_quelle', 'Tel. Quelle')
             
             # Finde/erstelle Spalten-Indizes
             def get_or_create_col_idx(headers, col_name):
@@ -225,6 +226,7 @@ class SheetsIO:
             tel2_idx = get_or_create_col_idx(headers, tel2_col)
             stufe_idx = get_or_create_col_idx(headers, stufe_col)
             zielgruppe_idx = get_or_create_col_idx(headers, zielgruppe_col)
+            tel_quelle_idx = get_or_create_col_idx(headers, tel_quelle_col)
             
             # Header aktualisieren falls neue Spalten
             header_range = f"{self.sheet_name}!A{header_row}:Z{header_row}"
@@ -266,6 +268,7 @@ class SheetsIO:
                 row_data[tel_idx] = result.telefonnummer or None
                 row_data[tel2_idx] = result.zweite_telefonnummer or None
                 row_data[stufe_idx] = result.stufe or None
+                row_data[tel_quelle_idx] = result.tel_quelle or None
                 
                 # Zielgruppe: Status "Unbekannt" und "Wechsel/Nicht mehr in Branche" in Zielgruppe anzeigen
                 if result.status == STATUS_UNBEKANNT:
