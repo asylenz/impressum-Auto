@@ -25,6 +25,7 @@ class LeadResult:
     zweite_telefonnummer: str = ""
     stufe: str = ""
     stufe_prio: int = 99  # Priorität der Stufen-Quelle (1=Firmenseite, 2=Entry, 3=Headline, 4=Lusha; niedriger = besser)
+    stufe_quelle: str = ""  # Quelle der Stufe: "Firmenseite" | "LinkedIn Entry" | "LinkedIn Header" | "Xing Entry" | "Xing Header" | "Lusha"
     status: str = ""
     zielgruppe: str = ""  # "In Scope", "Out of Scope" oder leer
     tel_quelle: str = ""  # Quelle der Telefonnummer: "Firmenseite" | "LinkedIn" | "Creditreform" | "Lusha"

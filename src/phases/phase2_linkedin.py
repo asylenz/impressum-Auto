@@ -21,6 +21,7 @@ class LinkedInPhase:
         self.rate_limiter = rate_limiter
         self.valid_stufen = config.valid_stufen
         self.company_name = config.company_name
+        self.match_name = config.linkedin_match_name
     
     def process(self, page: Page, url: str, lead: Lead, flags: ProcessingFlags) -> Tuple[Optional[str], Optional[str], List[str], bool]:
         """
@@ -113,8 +114,8 @@ class LinkedInPhase:
             page.evaluate("window.scrollTo(0, 1200)")
             page.wait_for_timeout(1000)
 
-            company_lower = self.company_name.lower()
-            company_upper = self.company_name.upper()
+            company_lower = self.match_name.lower()
+            company_upper = self.match_name.upper()
 
             # --- Primäransatz: Experience-Überschrift gezielt warten und Section targetieren ---
             # Warte auf "Experience"/"Berufserfahrung"-Heading (lazy-load)
@@ -321,7 +322,12 @@ class LinkedInPhase:
             
             if not headline_text:
                 return None
-            
+
+            # Nur weitermachen wenn das gesuchte Unternehmen im Headline-Text vorkommt
+            if self.match_name.lower() not in headline_text.lower():
+                logger.debug(f"Headline enthält nicht '{self.match_name}' – wird ignoriert")
+                return None
+
             logger.debug(f"LinkedIn Headline: {headline_text[:80]}...")
             
             # Extrahiere Jobtitel-Teil bei "Titel bei Firma"-Format (deutsches LinkedIn)

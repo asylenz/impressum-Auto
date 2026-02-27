@@ -89,6 +89,16 @@ class Config:
     def lusha_company_name(self) -> str:
         """Name der Firma für die Lusha API Suche"""
         return self.company_config.get('lusha_company_name', self.company_name)
+
+    @property
+    def linkedin_match_name(self) -> str:
+        """Name der Firma für die Textsuche in LinkedIn/Xing Profilen (Entry + Header/Headline)."""
+        return self.company_config.get('linkedin_match_name', self.company_name)
+
+    @property
+    def treat_unknown_as_validated(self) -> bool:
+        """Wenn true: unbekannte Stufen werden wie validierte behandelt (z.B. TauRes-Modus)."""
+        return self.company_config.get('treat_unknown_as_validated', False)
     
     @property
     def company_aliases(self) -> List[str]:

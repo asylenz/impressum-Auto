@@ -115,6 +115,8 @@ companies:
       contact_links: []
     suffixes: {}
     lusha_company_name: "TauRes"
+    linkedin_match_name: "TauRes Gesellschaft"
+    treat_unknown_as_validated: true
 
 # Rate-Limits (pro Plattform)
 limits:
@@ -187,10 +189,12 @@ sheets:
     stufe: "Stufe"
     zielgruppe: "Zielgruppe"
     tel_quelle: "Tel. Quelle"
+    stufe_quelle: "Stufen Quelle"
   header_row: 1
   data_start_row: 2
   skip_already_processed: true
   skip_check_column: "Telefonnummer"
+  nochmal_column: "Nochmal"
 
 # Logging
 logging:

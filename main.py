@@ -48,6 +48,8 @@ def main():
     # Argument Parser setup
     parser = argparse.ArgumentParser(description='Company Lead Scraping Bot')
     parser.add_argument('--mode', type=str, help='Modus (z.B. tecis)', default=None)
+    parser.add_argument('--retry', action='store_true', default=False,
+                        help='Nur Zeilen verarbeiten wo Spalte Nochmal = x')
     args = parser.parse_args()
 
     # Logger initialisieren (wird später konfiguriert, aber wir brauchen ihn für Exception Handling)
@@ -63,10 +65,12 @@ def main():
         logger.info("="*80)
         logger.info(f"Company-Bot startet im Modus: {config.mode}...")
         logger.info(f"Firma: {config.company_name}")
+        if args.retry:
+            logger.info("RETRY-MODUS aktiv: Verarbeite nur Zeilen mit 'x' in Spalte 'Nochmal'")
         logger.info("="*80)
         
         # Google Sheets Verbindung
-        sheets_io = SheetsIO(config)
+        sheets_io = SheetsIO(config, retry_mode=args.retry)
         
         # Leads aus Google Sheets laden
         logger.info("Lade Leads aus Google Sheets...")

@@ -21,12 +21,13 @@ SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 class SheetsIO:
     """Google Sheets API Handler"""
     
-    def __init__(self, config):
+    def __init__(self, config, retry_mode: bool = False):
         self.config = config
         self.sheet_id = config.sheet_id
         self.sheet_name = config.get('sheets.sheet_name', 'Sheet1')
         self.service = self._authenticate()
         self.company_aliases = config.company_aliases
+        self.retry_mode = retry_mode
     
     def _authenticate(self):
         """OAuth2 Authentifizierung"""
@@ -105,11 +106,15 @@ class SheetsIO:
             except ValueError as e:
                 raise ValueError(f"Spalte nicht gefunden. Erwartet: {list(input_cols.values()) or ['Vorname','Nachname','Unternehmen']}, gefunden: {headers}. {e}")
             
-            # Optional: Index der Spalte zum Überspringen bereits verarbeiteter Zeilen
+            # Spalten-Indizes für Filter-Logik
+            nochmal_col = self.config.get('sheets.nochmal_column', 'Nochmal')
+            nochmal_idx = headers.index(nochmal_col) if nochmal_col in headers else None
+
+            # Normal-Modus: bereits verarbeitete Zeilen überspringen
             skip_already = self.config.get('sheets.skip_already_processed', True)
             skip_col = self.config.get('sheets.skip_check_column', 'Telefonnummer')
             skip_idx = None
-            if skip_already and skip_col in headers:
+            if not self.retry_mode and skip_already and skip_col in headers:
                 skip_idx = headers.index(skip_col)
             
             # Daten lesen
@@ -137,29 +142,31 @@ class SheetsIO:
                             break
                     
                     if not is_valid_company:
-                        # logger.debug(f"Zeile {i}: Unternehmen '{unternehmen}' passt nicht zu Modus '{self.config.mode}' (Erlaubt: {self.company_aliases})")
                         continue
 
-                    # 2. Skip-Check (Bereits verarbeitet?)
-                    if skip_already and skip_idx is not None:
-                        if len(row) > skip_idx:
-                            cell = (row[skip_idx] or "").strip()
-                            if cell:
-                                continue  # Zeile überspringen, wurde schon verarbeitet
+                    if self.retry_mode:
+                        # Retry-Modus: nur Zeilen mit "x" in Nochmal-Spalte verarbeiten
+                        if nochmal_idx is None or len(row) <= nochmal_idx:
+                            continue
+                        nochmal_cell = (row[nochmal_idx] or "").strip().lower()
+                        if nochmal_cell != "x":
+                            continue
+                    else:
+                        # Normal-Modus: Zeilen überspringen die bereits verarbeitet wurden
+                        if skip_already and skip_idx is not None:
+                            if len(row) > skip_idx:
+                                cell = (row[skip_idx] or "").strip()
+                                if cell:
+                                    continue  # Zeile überspringen, wurde schon verarbeitet
                     
                     # Lead erstellen
                     if use_full_name:
                         full_name = (row[full_name_idx].strip() if len(row) > full_name_idx else "")
-                        # Split full name into first and last name
-                        # This is a basic split, assuming "First Last" or "First Middle Last"
                         parts = full_name.split()
                         if len(parts) >= 2:
-                            # Last part is surname, everything before is first name(s)
-                            # This handles middle names better than just assigning full_name to vorname
                             nachname = parts[-1]
                             vorname = " ".join(parts[:-1])
                         else:
-                            # Fallback if only one name part
                             vorname = full_name
                             nachname = ""
                     else:
@@ -174,7 +181,9 @@ class SheetsIO:
                             row_number=i
                         ))
             
-            if skip_already and leads:
+            if self.retry_mode and leads:
+                logger.info(f"{len(leads)} Zeilen für '{self.config.mode}' mit 'x' in Spalte '{nochmal_col}' werden erneut verarbeitet")
+            elif skip_already and leads:
                 logger.info(f"{len(leads)} Zeilen für '{self.config.mode}' mit leerer {skip_col} (inkl. Lücken) werden verarbeitet")
             
             return leads
@@ -212,6 +221,8 @@ class SheetsIO:
             stufe_col = output_cols.get('stufe', 'Stufe/Position')
             zielgruppe_col = output_cols.get('zielgruppe', 'Zielgruppe')
             tel_quelle_col = output_cols.get('tel_quelle', 'Tel. Quelle')
+            stufe_quelle_col = output_cols.get('stufe_quelle', 'Stufen Quelle')
+            nochmal_col = self.config.get('sheets.nochmal_column', 'Nochmal')
             
             # Finde/erstelle Spalten-Indizes
             def get_or_create_col_idx(headers, col_name):
@@ -227,6 +238,9 @@ class SheetsIO:
             stufe_idx = get_or_create_col_idx(headers, stufe_col)
             zielgruppe_idx = get_or_create_col_idx(headers, zielgruppe_col)
             tel_quelle_idx = get_or_create_col_idx(headers, tel_quelle_col)
+            stufe_quelle_idx = get_or_create_col_idx(headers, stufe_quelle_col)
+            if self.retry_mode:
+                nochmal_idx = get_or_create_col_idx(headers, nochmal_col)
             
             # Header aktualisieren falls neue Spalten
             header_range = f"{self.sheet_name}!A{header_row}:Z{header_row}"
@@ -269,6 +283,9 @@ class SheetsIO:
                 row_data[tel2_idx] = result.zweite_telefonnummer or None
                 row_data[stufe_idx] = result.stufe or None
                 row_data[tel_quelle_idx] = result.tel_quelle or None
+                row_data[stufe_quelle_idx] = result.stufe_quelle or None
+                if self.retry_mode:
+                    row_data[nochmal_idx] = None  # "x" nach erfolgreicher Verarbeitung löschen
                 
                 # Zielgruppe: Status "Unbekannt" und "Wechsel/Nicht mehr in Branche" in Zielgruppe anzeigen
                 if result.status == STATUS_UNBEKANNT:
