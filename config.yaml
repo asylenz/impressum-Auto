@@ -128,14 +128,48 @@ companies:
       - "dvag ag"
     stufen:
       in_scope:
-        - "Vermögensberater"
-        - "Vermögensberater AG"
-        - "Leitender Vermögensberater"
-        - "Direktor"
-        - "Geschäftsführender Direktor"
-      out_of_scope:
-        - "Trainee"
-        - "Nachwuchskraft"
+        # --- Bild 1: Karrierestufen-Tabelle (alle in_scope) ---
+        - "Direktionsleiter"
+        - "Direktionsleiter/-in"
+        - "Regionaldirektionsleiter 2"
+        - "Regionaldirektionsleiter/-in 2"
+        - "Regionaldirektionsleiter 1"
+        - "Regionaldirektionsleiter/-in 1"
+        - "Regionaldirektionsleiter"
+        - "Hauptgeschäftsstellenleiter"
+        - "Hauptgeschäftsstellenleiter/-in"
+        - "Geschäftsstellenleiter"
+        - "Geschäftsstellenleiter/-in"
+        - "Regionalgeschäftsstellenleiter"
+        - "Regionalgeschäftsstellenleiter/-in"
+        - "Agenturleiter"
+        - "Agenturleiter/-in"
+        # Kurzbezeichnungen (wie sie auf LinkedIn/Xing stehen können)
+        - "D"
+        - "RD 2"
+        - "RD 1"
+        - "RD"
+        - "HGS"
+        - "GS"
+        - "RGS"
+        - "AL"
+        # --- Bild 2: Linke Seite (eingekreist, P-Stufen) ---
+        - "P 2"
+        - "P 3"
+        - "P 4"
+        - "P 5"
+        - "P 6"
+        - "P 7"
+        - "P2"
+        - "P3"
+        - "P4"
+        - "P5"
+        - "P6"
+        - "P7"
+        - "Hauptberuf"
+        - "Nebenberuf"
+      # Alles andere (Vermögensberater, VBA, VM etc.) = unbekannt → Stufe n/a
+      out_of_scope: []
 
     # Profil-URL: https://www.dvag.de/[name]/index.html
     url_pattern: "^https?://(?:www\\.)?dvag\\.de/[a-zA-Z0-9._-]+(?:/index\\.html)?$"
@@ -156,12 +190,9 @@ companies:
     # Telefon befindet sich auf der Hauptseite (index.html), nicht auf einer Kontaktseite
     phone_on_main_page: true
 
-    # Da DVAG-Seiten keine explizite Berufsbezeichnung im Text haben,
-    # wird jeder Berater primär als "Vermögensberater" klassifiziert
-    default_stufe: "Vermögensberater"
-
     lusha_company_name: "Deutsche Vermögensberatung"
-    treat_unknown_as_validated: true
+    # Unbekannte Stufen (z.B. Vermögensberater, VBA) werden NICHT als validiert behandelt
+    treat_unknown_as_validated: false
 
 # Rate-Limits (pro Plattform)
 limits:

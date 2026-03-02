@@ -6,7 +6,7 @@ import logging
 import sys
 import argparse
 from pathlib import Path
-from datetime import timedelta
+from datetime import datetime, timedelta
 import nest_asyncio
 
 # Projektverzeichnis zum Python-Pfad hinzufügen
@@ -20,6 +20,7 @@ from src.config import Config
 from src.sheets_io import SheetsIO
 from src.bot import CompanyBot
 from src.rate_limiter import RateLimitExceeded
+from src.constants import TEL_KEINE, TEL_NA
 
 def setup_logging(config: Config):
     """Logging konfigurieren mit strukturiertem Format"""
@@ -42,6 +43,45 @@ def setup_logging(config: Config):
     # Playwright-Logs reduzieren
     logging.getLogger('playwright').setLevel(logging.WARNING)
     logging.getLogger('urllib3').setLevel(logging.WARNING)
+
+def print_progress(current: int, total: int, start_time: datetime):
+    """Gibt einen Fortschrittsbalken im Terminal aus"""
+    bar_width = 20
+    filled = int(bar_width * current / total)
+    bar = '█' * filled + '░' * (bar_width - filled)
+    pct = int(100 * current / total)
+
+    elapsed_secs = (datetime.now() - start_time).total_seconds()
+    if current > 0:
+        avg_secs = elapsed_secs / current
+        remaining_secs = avg_secs * (total - current)
+        remaining_min = int(remaining_secs / 60)
+        zeit_str = f"⏱ ~{remaining_min} min verbleibend"
+    else:
+        zeit_str = "⏱ wird berechnet..."
+
+    print(f"  Fortschritt: [{bar}] {current}/{total} ({pct}%) | {zeit_str}")
+
+
+def print_summary(stats: dict, start_time: datetime, retry_mode: bool):
+    """Gibt die Abschluss-Zusammenfassung im Terminal aus"""
+    dauer = datetime.now() - start_time
+    total_secs = int(dauer.total_seconds())
+    dauer_min = total_secs // 60
+    dauer_sek = total_secs % 60
+
+    titel = "RETRY ABGESCHLOSSEN" if retry_mode else "VERARBEITUNG ABGESCHLOSSEN"
+    linie = "=" * 48
+
+    print(f"\n{linie}")
+    print(f"  {titel}")
+    print(linie)
+    print(f"  Verarbeitet:             {stats['verarbeitet']} Personen")
+    print(f"  Telefonnummer gefunden:  {stats['telefon_gefunden']}")
+    print(f"  Kein Ergebnis:           {stats['kein_ergebnis']}")
+    print(f"  Dauer:                   {dauer_min} Min {dauer_sek} Sek")
+    print(f"{linie}\n")
+
 
 def main():
     """Hauptfunktion"""
@@ -116,6 +156,9 @@ def main():
         logger.info("✓ LinkedIn Rate-Limit OK - Verarbeitung kann starten")
         
         # Leads verarbeiten
+        start_time = datetime.now()
+        stats = {'verarbeitet': 0, 'telefon_gefunden': 0, 'kein_ergebnis': 0}
+
         try:
             logger.info("="*80)
             logger.info("Starte Lead-Verarbeitung...")
@@ -124,24 +167,45 @@ def main():
                 logger.info(f"[{i}/{len(leads)}] Verarbeite: {lead.vorname} {lead.nachname}")
                 result = bot.process_lead(lead)
                 logger.info(f"[{i}/{len(leads)}] Abgeschlossen: Tel={result.telefonnummer}, Stufe={result.stufe}")
-                
+
                 # Sofort in Google Sheets schreiben
                 sheets_io.write_single_result(result)
                 logger.info(f"[{i}/{len(leads)}] ✓ In Tabelle geschrieben")
+
+                # Statistik aktualisieren
+                stats['verarbeitet'] += 1
+                hat_telefon = bool(
+                    result.telefonnummer and
+                    result.telefonnummer not in ('', TEL_KEINE, TEL_NA)
+                )
+                if hat_telefon:
+                    stats['telefon_gefunden'] += 1
+                else:
+                    stats['kein_ergebnis'] += 1
+
+                # Fortschrittsbalken ausgeben
+                print_progress(i, len(leads), start_time)
+
         except RateLimitExceeded as e:
             # Lead wurde bereits geschrieben, jetzt System stoppen
             if e.platform == 'linkedin':
                 logger.warning("LinkedIn Tageslimit während Verarbeitung erreicht")
                 print(e.get_formatted_message())
+                if stats['verarbeitet'] > 0:
+                    print_summary(stats, start_time, args.retry)
                 sys.exit(0)
             else:
                 # Für andere Plattformen: warnen aber weitermachen
                 logger.warning(f"{e.platform} Rate-Limit erreicht: {e}")
         except KeyboardInterrupt:
             logger.warning("⚠ Bot durch Benutzer abgebrochen")
-        
+
         logger.info("="*80)
         logger.info("Company-Bot beendet.")
+
+        # Abschluss-Zusammenfassung
+        if stats['verarbeitet'] > 0:
+            print_summary(stats, start_time, args.retry)
         
     except KeyboardInterrupt:
         logger.info("Bot durch Benutzer abgebrochen")
