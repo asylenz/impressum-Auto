@@ -1,8 +1,8 @@
-# 🤖 Tecis-Bot: Automatisiertes Berater-Scraping & Validierungs-System
+# 🤖 BK-Automatisierung: Multi-Company Berater-Scraping & Validierungs-System
 
 <div align="center">
 
-**Ein intelligentes Python-System zur automatisierten Extraktion und Validierung von Tecis-Beraterdaten**
+**Ein intelligentes Python-System zur automatisierten Extraktion und Validierung von Beraterdaten – für mehrere Unternehmen**
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Playwright](https://img.shields.io/badge/playwright-1.49+-green.svg)](https://playwright.dev/)
@@ -12,6 +12,7 @@
 [Installation](#-installation) •
 [Konfiguration](#-konfiguration) •
 [Verwendung](#-verwendung) •
+[Unternehmens-Modi](#-unternehmens-modi) •
 [Architektur](#-architektur) •
 [Dokumentation](#-dokumentation)
 
@@ -21,12 +22,13 @@
 
 ## 📋 Über das Projekt
 
-Der **Tecis-Bot** ist ein robustes Web-Scraping-System, das automatisch Kontaktdaten (Telefonnummern) und Karrierestufen von Tecis-Finanzberatern extrahiert und validiert. Das System durchläuft dabei vier priorisierte Datenquellen mit intelligenten Fallback-Mechanismen:
+Der **BK-Automatisierungs-Bot** ist ein robustes Web-Scraping-System, das automatisch Kontaktdaten (Telefonnummern) und Karrierestufen von Finanzberatern verschiedener Unternehmen extrahiert und validiert. Das System unterstützt **4 Unternehmens-Modi** und durchläuft dabei fünf priorisierte Datenquellen mit intelligenten Fallback-Mechanismen:
 
-1. **Tecis.de** (Offizielle Quelle)
+1. **Firmenseite** (offizielle Quelle – je nach Modus: tecis.de, dvag.de etc.)
 2. **LinkedIn** (Karriere-Profil & Status-Validierung)
 3. **Xing** (Karriere-Profil DE)
 4. **Creditreform** (Gewerbe-Einträge)
+5. **Lusha API** (Fallback für Telefonnummer & Position)
 
 ### 🎯 Hauptziele
 
@@ -35,6 +37,8 @@ Der **Tecis-Bot** ist ein robustes Web-Scraping-System, das automatisch Kontaktd
 - ✅ Statusprüfung (Aktiv/Inaktiv) zur Lead-Qualität
 - ✅ Zielgruppen-Kategorisierung (In Scope / Out of Scope)
 - ✅ Vollständige Integration mit Google Sheets für Ein-/Ausgabe
+- ✅ Unterstützung für 4 Unternehmens-Modi: **tecis**, **swiss_life_select**, **taures**, **dvag**
+- ✅ Retry-Modus für markierte Leads (Spalte "Nochmal")
 
 ---
 
@@ -82,8 +86,17 @@ playwright install chromium
 cp .env.example .env
 # Bearbeite .env mit deinen Credentials
 
-# 5. Bot starten
-python main.py
+# 5. Bot starten – Modus wählen:
+python main.py --mode tecis               # tecis Finanzdienstleistungen
+python main.py --mode swiss_life_select   # Swiss Life Select
+python main.py --mode taures              # TauRes
+python main.py --mode dvag                # Deutsche Vermögensberatung (DVAG)
+
+# Retry-Modus (nur Zeilen mit "x" in Spalte "Nochmal"):
+python main.py --mode tecis --retry
+python main.py --mode swiss_life_select --retry
+python main.py --mode taures --retry
+python main.py --mode dvag --retry
 ```
 
 📖 **Ausführliche Anleitung:** Siehe [ONBOARDING.md](ONBOARDING.md) für detailliertes Setup mit Google Cloud, LinkedIn und Troubleshooting.
@@ -256,23 +269,32 @@ limits:
 
 Passe die Limits entsprechend an!
 
-#### Gültige Stufen (Appendix B)
+#### Gültige Stufen pro Modus
 
-Die Whitelist befindet sich ebenfalls in `config.yaml`:
+Die Stufen-Listen sind pro Unternehmens-Modus in `config.yaml` definiert:
 
 ```yaml
-valid_stufen:
-  - "Sales Consultant"
-  - "Senior Sales Consultant"
-  - "Sales Manager"
-  - "Senior Sales Manager"
-  - "Seniorberater"
-  - "Teamleiter"
-  - "Repräsentanzleiter"
-  - "Branch Manager"
-  - "Regional Manager"
-  - "General Sales Manager"
+companies:
+  tecis:
+    stufen:
+      in_scope:
+        - "Sales Consultant"
+        - "Teamleiter"
+        # ...
+      out_of_scope:
+        - "Trainee"
+        # ...
+  dvag:
+    stufen:
+      in_scope:
+        - "Direktionsleiter"
+        - "Agenturleiter"
+        - "P5"
+        # ...
+      out_of_scope: []  # Alles andere = Unbekannt
 ```
+
+> 💡 **Neue Stufe hinzufügen:** Einfach den Positionsnamen unter `in_scope` oder `out_of_scope` beim entsprechenden Modus in `config.yaml` eintragen.
 
 ---
 
@@ -284,23 +306,120 @@ valid_stufen:
 # Virtual Environment aktivieren (falls nicht bereits aktiv)
 source venv/bin/activate  # macOS/Linux
 # venv\Scripts\activate  # Windows
-
-# Bot starten (Standard: Tecis)
-python main.py
-
-# Bot mit spezifischem Modus starten (z.B. Swiss Life Select oder TauRes)
-python main.py --mode swiss_life_select
-python main.py --mode taures
 ```
 
-**Was der Bot macht:**
-1. ✅ Lädt Leads aus Google Sheets (nur unverarbeitete Zeilen)
-2. 🔍 Findet URLs über Serper API oder lokale Google-Suche
-3. 🤖 Verarbeitet jeden Lead durch die 4 Phasen (Tecis → LinkedIn → Xing → Creditreform)
-4. 📊 Schreibt Ergebnisse sofort zurück in Google Sheets
-5. 🛡️ Beachtet Rate-Limits und pausiert automatisch bei Erreichen
+#### Alle verfügbaren Befehle
 
-**Console-Output Beispiel:**
+```bash
+# ── Normaler Lauf (verarbeitet alle neuen/unverarbeiteten Zeilen) ──────────────
+python main.py --mode tecis               # tecis Finanzdienstleistungen
+python main.py --mode swiss_life_select   # Swiss Life Select
+python main.py --mode taures              # TauRes
+python main.py --mode dvag                # Deutsche Vermögensberatung (DVAG)
+
+# ── Retry-Modus (nur Zeilen mit "x" in Spalte "Nochmal") ─────────────────────
+python main.py --mode tecis --retry
+python main.py --mode swiss_life_select --retry
+python main.py --mode taures --retry
+python main.py --mode dvag --retry
+```
+
+> 💡 **Retry-Modus:** Trage ein `x` in die Spalte **"Nochmal"** bei den gewünschten Personen ein. Der Bot verarbeitet dann nur diese Zeilen erneut und löscht das `x` danach automatisch. In Spalte **"Letzter Retry"** wird Datum und Uhrzeit eingetragen.
+
+---
+
+### Was der Bot macht
+
+1. ✅ Lädt Leads aus Google Sheets (nur unverarbeitete Zeilen, oder bei `--retry` nur markierte)
+2. 🔍 Findet URLs über Serper API oder lokale Google-Suche
+3. 🤖 Verarbeitet jeden Lead durch bis zu 5 Phasen
+4. 📊 Schreibt Ergebnisse sofort nach jeder Person in Google Sheets
+5. 🛡️ Beachtet Rate-Limits und pausiert automatisch
+6. 📈 Zeigt Fortschrittsbalken und Abschluss-Zusammenfassung im Terminal
+
+---
+
+### Terminal-Ausgabe
+
+```
+================================================================================
+Company-Bot startet im Modus: dvag...
+Firma: DVAG
+================================================================================
+✓ 25 Lead(s) erfolgreich geladen
+✓ LinkedIn Rate-Limit OK - Verarbeitung kann starten
+================================================================================
+Starte Lead-Verarbeitung...
+================================================================================
+[1/25] Verarbeite: Max Mustermann
+--- Phase 1: DVAG ---
+--- Phase 2: LinkedIn ---
+[1/25] ✓ In Tabelle geschrieben
+  Fortschritt: [████░░░░░░░░░░░░░░░░] 1/25 (4%) | ⏱ ~48 min verbleibend
+...
+================================================
+  VERARBEITUNG ABGESCHLOSSEN
+================================================
+  Verarbeitet:             25 Personen
+  Telefonnummer gefunden:  18
+  Kein Ergebnis:           7
+  Dauer:                   52 Min 14 Sek
+================================================
+```
+
+---
+
+## 🏢 Unternehmens-Modi
+
+Das System unterstützt 4 vorkonfigurierte Unternehmens-Modi. Jeder Modus hat eigene Karrierestufen, Selektoren und Scraping-Logik.
+
+### `--mode tecis` — tecis Finanzdienstleistungen
+
+| | |
+|---|---|
+| **Firmenseite** | `tecis.de/[name].html` |
+| **Telefon-Quelle** | Kontaktseite (`/kontaktuebersicht.html`) |
+| **In Scope** | Sales Consultant, Senior Sales Consultant, Sales Manager, Senior Sales Manager, Seniorberater, Teamleiter, Repräsentanzleiter, Branch Manager, Regional Manager, General Sales Manager |
+| **Out of Scope** | Divisional Manager, General Manager, Juniorberater, Beraterassistent, Trainee |
+
+---
+
+### `--mode swiss_life_select` — Swiss Life Select
+
+| | |
+|---|---|
+| **Firmenseite** | `swisslife-select.de/[name].html` |
+| **Telefon-Quelle** | Kontaktseite (`/kontaktuebersicht.html`) |
+| **In Scope** | Finanzberater, Teammanager, Manager, Direktor, Seniordirektor |
+| **Out of Scope** | Teamleiter, Finanzberater-Trainee |
+
+---
+
+### `--mode taures` — TauRes
+
+| | |
+|---|---|
+| **Firmenseite** | keine (kein öffentliches Profil) |
+| **Telefon-Quelle** | LinkedIn, Creditreform, Lusha |
+| **In Scope** | Chief Consultant, Branchmanager, Regionalmanager, Divisionalmanager, Generalmanager |
+| **Out of Scope** | Senior Consultant, Junior Consultant, Trainee |
+| **Besonderheit** | Unbekannte Stufen werden als validiert behandelt (`treat_unknown_as_validated: true`) |
+
+---
+
+### `--mode dvag` — Deutsche Vermögensberatung (DVAG)
+
+| | |
+|---|---|
+| **Firmenseite** | `dvag.de/[name]/index.html` |
+| **Telefon-Quelle** | Hauptseite direkt (HTML-Attribut `a[href^="tel:"]`), Fallback: `/ueber-uns.html` |
+| **In Scope** | Direktionsleiter, Regionaldirektionsleiter 1/2, Hauptgeschäftsstellenleiter, Geschäftsstellenleiter, Regionalgeschäftsstellenleiter, Agenturleiter, P2–P7, Hauptberuf, Nebenberuf |
+| **Unbekannt** | Vermögensberater, VBA und alle anderen → Stufe = n/a |
+| **Besonderheit** | Telefonnummer wird direkt aus dem `tel:`-Href-Attribut extrahiert (kein sichtbarer Text) |
+
+---
+
+**Console-Output Beispiel (veraltet):**
 
 ```
 ================================================================================
@@ -406,51 +525,109 @@ python main.py  # Startet automatisch bei der nächsten unverarbeiteten Zeile
 
 ### Überblick
 
-Das System folgt einer **sequenziellen 4-Phasen-Architektur** mit intelligenten Fallbacks:
+Das System folgt einer **sequenziellen 5-Phasen-Architektur** mit intelligenten Fallbacks:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        LINK DISCOVERY                            │
-│  (Findet URLs auf allen 4 Plattformen via Serper/Google)        │
-└───────────────────────┬─────────────────────────────────────────┘
-                        │
-                        ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ PHASE 1: Tecis.de                                               │
-│ ✓ Stufe extrahieren (Karriere-Level)                           │
-│ ✓ Telefonnummer(n) von Kontaktseite                            │
-│ → Flags: nur_status_check | nur_stufe_suchen                   │
-└───────────────────────┬─────────────────────────────────────────┘
-                        │
-                        ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ PHASE 2: LinkedIn                                               │
-│ ✓ Status-Validierung (Aktiv/Inaktiv = Authoritative Source)    │
-│ ✓ Stufe extrahieren (falls nicht vorhanden)                    │
-│ ✓ Telefonnummer aus "Contact Info"                             │
-│ → Flags: status_active_confirmed                               │
-└───────────────────────┬─────────────────────────────────────────┘
-                        │
-                        ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ PHASE 3: Xing                                                   │
-│ ✓ Stufe extrahieren (falls nicht vorhanden)                    │
-│ ✓ Status-Check (Aktiv/Inaktiv)                                 │
-│ → Xing liefert KEINE Telefonnummern                            │
-└───────────────────────┬─────────────────────────────────────────┘
-                        │
-                        ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ PHASE 4: Creditreform                                           │
-│ ✓ Telefonnummer aus Gewerbe-Eintrag (letzte Instanz)           │
-│ → Nur wenn Stufe vorhanden, aber noch kein Telefon             │
-└───────────────────────┬─────────────────────────────────────────┘
-                        │
-                        ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    OUTPUT LOGIC (Appendix A)                    │
-│  Wendet Szenarien 1-6 an und schreibt in Google Sheets         │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    START([▶ python main.py --mode X]) --> CONFIG[Config & Modus laden\ntecis / swiss_life_select / taures / dvag]
+    CONFIG --> SHEETS[Google Sheets\nLeads einlesen]
+    SHEETS --> FILTER{Retry-Modus?\n--retry}
+    FILTER -->|Ja| RETRY_FILTER[Nur Zeilen mit x\nin Spalte Nochmal]
+    FILTER -->|Nein| NORMAL_FILTER[Alle Zeilen mit\nleerer Telefonnummer]
+    RETRY_FILTER --> LEADS[Lead-Liste]
+    NORMAL_FILTER --> LEADS
+
+    LEADS --> CHECK_LIMIT{LinkedIn\nTageslimit\nerreicht?}
+    CHECK_LIMIT -->|Ja| STOP_LIMIT([⛔ Bot beendet\nTageslimit])
+    CHECK_LIMIT -->|Nein| LOOP
+
+    subgraph LOOP [" Für jede Person "]
+        direction TB
+        DISCOVERY[🔍 Link-Discovery\nSerper API / Google-Suche\nFindet URLs für alle Plattformen]
+
+        DISCOVERY --> P1
+
+        subgraph P1 [" Phase 1 — Firmenseite "]
+            P1A[Seite öffnen\ntecis.de / swisslife-select.de\ndvag.de / — bei TauRes keine]
+            P1B[Stufe extrahieren\nCSS-Selektor]
+            P1C[Telefonnummer extrahieren\nKontaktseite oder tel:-Href DVAG]
+            P1A --> P1B --> P1C
+        end
+
+        P1 --> CHK1{Tel + Stufe\ngefunden?}
+        CHK1 -->|Nein| P2
+
+        subgraph P2 [" Phase 2 — LinkedIn "]
+            P2A[Login prüfen\npersistente Session]
+            P2B[Profil öffnen\nStatus prüfen: aktiv/inaktiv]
+            P2C[Stufe extrahieren\nEntry + Headline]
+            P2D[Telefon aus\nContact-Info]
+            P2A --> P2B --> P2C --> P2D
+        end
+
+        P2 --> CHK2{Person\ninaktiv?}
+        CHK2 -->|Ja, kein Firmenprofil| WECHSEL[Status: Wechsel/\nNicht mehr in Branche]
+        CHK2 -->|Nein| P3
+
+        subgraph P3 [" Phase 3 — Xing "]
+            P3A[Profil öffnen]
+            P3B[Stufe extrahieren\nEntry + Header]
+            P3C[Status prüfen]
+            P3A --> P3B --> P3C
+        end
+
+        P3 --> CHK3{Stufe vorhanden\naber kein Telefon?}
+        CHK3 -->|Ja| P4
+
+        subgraph P4 [" Phase 4 — Creditreform "]
+            P4A[Gewerbe-Eintrag öffnen]
+            P4B[Telefonnummer extrahieren]
+            P4A --> P4B
+        end
+
+        CHK3 -->|Nein| P5
+        P4 --> P5
+
+        subgraph P5 [" Phase 5 — Lusha API "]
+            P5A{Stufe fehlt?}
+            P5A -->|Ja| P5B[Stufe suchen via API]
+            P5B --> P5C{Stufe\ngefunden?}
+            P5C -->|Ja| P5D[Telefon suchen via API]
+            P5A -->|Nein, Stufe ok| P5E[Telefon suchen via API]
+        end
+
+        P5 --> FALLBACK{Noch keine\nStufe?}
+        FALLBACK -->|Ja + default_stufe konfiguriert| DEFAULT[Modus-Default eintragen\nz.B. Vermögensberater bei DVAG]
+        FALLBACK -->|Nein| OUTPUT
+
+        DEFAULT --> OUTPUT
+
+        subgraph OUTPUT [" Output-Logik "]
+            OUT1[Zielgruppe setzen\nIn Scope / Out of Scope / Unbekannt]
+            OUT2[Telefonnummer normalisieren\ngarkeine / n/a / echte Nummer]
+            OUT1 --> OUT2
+        end
+
+        OUTPUT --> WRITE[📊 Google Sheets\nErgebnis sofort schreiben\nx aus Nochmal löschen\nLetzter Retry Datum eintragen]
+        WRITE --> PROGRESS[📈 Fortschrittsbalken\nim Terminal aktualisieren]
+    end
+
+    PROGRESS --> CHK_MORE{Weitere\nPersonen?}
+    CHK_MORE -->|Ja| LOOP
+    CHK_MORE -->|Nein| SUMMARY
+
+    subgraph SUMMARY [" Abschluss "]
+        SUM1[Zusammenfassung ausgeben\nVerarbeitet / Telefon gefunden\nKein Ergebnis / Dauer]
+    end
+
+    SUMMARY --> END([✅ Bot beendet])
+
+    style START fill:#2d6a4f,color:#fff
+    style END fill:#2d6a4f,color:#fff
+    style STOP_LIMIT fill:#c1121f,color:#fff
+    style WECHSEL fill:#c1121f,color:#fff
+    style DEFAULT fill:#e9c46a,color:#333
+    style WRITE fill:#457b9d,color:#fff
 ```
 
 ### Processing-Flags
