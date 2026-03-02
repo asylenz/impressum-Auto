@@ -3,6 +3,7 @@ Google Sheets Ein-/Ausgabe
 """
 
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import List
 from google.auth.transport.requests import Request
@@ -223,6 +224,7 @@ class SheetsIO:
             tel_quelle_col = output_cols.get('tel_quelle', 'Tel. Quelle')
             stufe_quelle_col = output_cols.get('stufe_quelle', 'Stufen Quelle')
             nochmal_col = self.config.get('sheets.nochmal_column', 'Nochmal')
+            letzter_retry_col = self.config.get('sheets.letzter_retry_column', 'Letzter Retry')
             
             # Finde/erstelle Spalten-Indizes
             def get_or_create_col_idx(headers, col_name):
@@ -241,6 +243,7 @@ class SheetsIO:
             stufe_quelle_idx = get_or_create_col_idx(headers, stufe_quelle_col)
             if self.retry_mode:
                 nochmal_idx = get_or_create_col_idx(headers, nochmal_col)
+                letzter_retry_idx = get_or_create_col_idx(headers, letzter_retry_col)
             
             # Header aktualisieren falls neue Spalten
             header_range = f"{self.sheet_name}!A{header_row}:Z{header_row}"
@@ -285,7 +288,8 @@ class SheetsIO:
                 row_data[tel_quelle_idx] = result.tel_quelle or None
                 row_data[stufe_quelle_idx] = result.stufe_quelle or None
                 if self.retry_mode:
-                    row_data[nochmal_idx] = None  # "x" nach erfolgreicher Verarbeitung löschen
+                    row_data[nochmal_idx] = ""  # "x" nach erfolgreicher Verarbeitung löschen
+                    row_data[letzter_retry_idx] = datetime.now().strftime("%d.%m.%Y %H:%M")
                 
                 # Zielgruppe: Status "Unbekannt" und "Wechsel/Nicht mehr in Branche" in Zielgruppe anzeigen
                 if result.status == STATUS_UNBEKANNT:
