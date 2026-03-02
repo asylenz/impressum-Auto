@@ -4,13 +4,14 @@ Utility-Funktionen
 
 import re
 import unicodedata
+from urllib.parse import unquote
 from typing import Optional, Tuple, Dict
 from src.constants import ACTIVE_KEYWORDS
 
 def extract_phone_from_href(href: str) -> str:
     """Extrahiert Telefonnummer aus tel: Link"""
     if href.startswith('tel:'):
-        return href.replace('tel:', '').strip()
+        return unquote(href.replace('tel:', '').strip())
     return href
 
 def normalize_phone(phone: str) -> str:

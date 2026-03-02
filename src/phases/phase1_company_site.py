@@ -44,13 +44,6 @@ class CompanySitePhase:
             # Stufe extrahieren
             stufe = self._extract_stufe(page)
 
-            # Modus-spezifischer Default wenn keine Stufe per Selektor gefunden
-            if not stufe:
-                default_stufe = self.config.company_config.get('default_stufe')
-                if default_stufe:
-                    stufe = default_stufe
-                    logger.info(f"Keine Stufe via Selektor – verwende Modus-Default: '{default_stufe}'")
-
             if stufe:
                 logger.info(f"Stufe gefunden: {stufe}")
                 flags.stufe_gefunden = True

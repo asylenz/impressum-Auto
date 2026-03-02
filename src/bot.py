@@ -191,7 +191,18 @@ class CompanyBot:
                             result.zweite_telefonnummer = tel_lusha[1] if len(tel_lusha) > 1 else ""
                             result.tel_quelle = "Lusha"
             
-            # 7. Output-Mapping (Appendix A)
+            # 7. Letzter Fallback: Modus-spezifischer Default-Stufe (z.B. DVAG: "Vermögensberater")
+            # Wird nur angewendet wenn alle Phasen (LinkedIn, Xing, Lusha) keine Stufe gefunden haben
+            if not result.stufe:
+                default_stufe = self.config.company_config.get('default_stufe')
+                if default_stufe:
+                    result.stufe = default_stufe
+                    result.stufe_quelle = "Modus-Default"
+                    result.stufe_prio = 99
+                    flags.stufe_gefunden = True
+                    logger.info(f"Keine Stufe in allen Phasen gefunden – verwende Modus-Default: '{default_stufe}'")
+
+            # 8. Output-Mapping (Appendix A)
             self._apply_output_logic(result)
             
             logger.info(f"=== Verarbeitung abgeschlossen: {lead.full_name} ===")
