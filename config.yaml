@@ -118,6 +118,51 @@ companies:
     linkedin_match_name: "TauRes Gesellschaft"
     treat_unknown_as_validated: true
 
+  dvag:
+    name: "DVAG"
+    domain: "dvag.de"
+    sheet_aliases:
+      - "dvag"
+      - "deutsche vermögensberatung"
+      - "deutsche vermögensberatung ag"
+      - "dvag ag"
+    stufen:
+      in_scope:
+        - "Vermögensberater"
+        - "Vermögensberater AG"
+        - "Leitender Vermögensberater"
+        - "Direktor"
+        - "Geschäftsführender Direktor"
+      out_of_scope:
+        - "Trainee"
+        - "Nachwuchskraft"
+
+    # Profil-URL: https://www.dvag.de/[name]/index.html
+    url_pattern: "^https?://(?:www\\.)?dvag\\.de/[a-zA-Z0-9._-]+(?:/index\\.html)?$"
+
+    selectors:
+      # Titel-Selektoren (Position auf der Profilseite – oft nicht vorhanden bei DVAG)
+      title:
+        - '[class*="vb-profile__subtitle"]'
+        - '[class*="personal-information__title"]'
+      # DVAG-spezifischer Quicklink-Selektor: Telefon steckt im href-Attribut
+      contact_links:
+        - 'a.dvag-m-c24-quicklink-item__link[href^="tel:"]'
+
+    suffixes:
+      # Fallback-Seite wenn kein Telefon auf der Hauptseite
+      ueber_uns: "/ueber-uns.html"
+
+    # Telefon befindet sich auf der Hauptseite (index.html), nicht auf einer Kontaktseite
+    phone_on_main_page: true
+
+    # Da DVAG-Seiten keine explizite Berufsbezeichnung im Text haben,
+    # wird jeder Berater primär als "Vermögensberater" klassifiziert
+    default_stufe: "Vermögensberater"
+
+    lusha_company_name: "Deutsche Vermögensberatung"
+    treat_unknown_as_validated: true
+
 # Rate-Limits (pro Plattform)
 limits:
   linkedin:
@@ -133,6 +178,10 @@ limits:
     delay_between_requests_max: 5
 
   tecis: # Rate limit für Firmenseite
+    delay_between_requests_min: 1
+    delay_between_requests_max: 3
+
+  dvag: # Rate limit für DVAG-Profilseiten
     delay_between_requests_min: 1
     delay_between_requests_max: 3
 

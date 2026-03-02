@@ -43,7 +43,14 @@ class CompanySitePhase:
             
             # Stufe extrahieren
             stufe = self._extract_stufe(page)
-            
+
+            # Modus-spezifischer Default wenn keine Stufe per Selektor gefunden
+            if not stufe:
+                default_stufe = self.config.company_config.get('default_stufe')
+                if default_stufe:
+                    stufe = default_stufe
+                    logger.info(f"Keine Stufe via Selektor – verwende Modus-Default: '{default_stufe}'")
+
             if stufe:
                 logger.info(f"Stufe gefunden: {stufe}")
                 flags.stufe_gefunden = True
@@ -136,31 +143,52 @@ class CompanySitePhase:
         return first_candidate
     
     def _extract_telefonnummern(self, page: Page, base_url: str, lead: Lead) -> List[str]:
-        """Extrahiert Telefonnummern von Kontaktseite, bei Bedarf auch aus Impressum."""
-        telefonnummern = []
+        """Extrahiert Telefonnummern von Kontaktseite, bei Bedarf auch aus Impressum.
         
+        DVAG-Modus (phone_on_main_page=true):
+          Primär: tel:-href direkt von der bereits geladenen Hauptseite (index.html)
+          Fallback: Über-uns-Seite
+        Standard-Modus:
+          Primär: Kontaktseite, Fallback: Impressum
+        """
+        telefonnummern = []
+
         try:
-            # Zuerst Kontaktseite versuchen
+            if self.config.company_config.get('phone_on_main_page'):
+                # Primär: Telefon vom bereits geladenen Haupt-URL holen
+                telefonnummern = self._collect_tel_links(page)
+                if telefonnummern:
+                    logger.info(f"Telefonnummer direkt von Hauptseite extrahiert: {telefonnummern}")
+                    return telefonnummern[:2]
+
+                # Fallback: Über-uns-Seite
+                ueber_uns_suffix = self.suffixes.get('ueber_uns', '/ueber-uns.html')
+                ueber_uns_url = self._build_suffix_url(base_url, ueber_uns_suffix)
+                logger.debug(f"Kein Tel auf Hauptseite, versuche Über-uns: {ueber_uns_url}")
+                page.goto(ueber_uns_url, wait_until='domcontentloaded')
+                telefonnummern = self._collect_tel_links(page)
+                return telefonnummern[:2]
+
+            # Standard-Modus: Kontaktseite → Impressum
             kontakt_url = self._build_kontakt_url(base_url)
             logger.debug(f"Öffne Kontaktseite: {kontakt_url}")
             page.goto(kontakt_url, wait_until='domcontentloaded')
             telefonnummern = self._collect_tel_links(page)
-            
-            # Fallback: Impressum, wenn auf Kontaktseite nichts gefunden
+
             if not telefonnummern:
                 impressum_url = self._build_impressum_url(base_url)
                 if impressum_url != kontakt_url:
                     logger.debug(f"Keine Nummer auf Kontaktseite, versuche Impressum: {impressum_url}")
                     page.goto(impressum_url, wait_until='domcontentloaded')
                     telefonnummern = self._collect_tel_links(page)
-            
+
             return telefonnummern[:2]
-            
+
         except PlaywrightTimeout:
-            logger.warning("Timeout beim Laden der Kontaktseite")
+            logger.warning("Timeout beim Laden der Seite")
         except Exception as e:
             logger.error(f"Fehler beim Extrahieren von Telefonnummern: {e}")
-        
+
         return telefonnummern[:2] if telefonnummern else []
     
     def _collect_tel_links(self, page: Page) -> List[str]:
@@ -193,6 +221,18 @@ class CompanySitePhase:
                     result.append(nummer)
         return result
     
+    def _build_suffix_url(self, base_url: str, suffix: str) -> str:
+        """Ersetzt den letzten Dateinamen einer URL durch den angegebenen Suffix.
+        
+        Beispiel: .../tomas.kohoutek/index.html + /ueber-uns.html
+               -> .../tomas.kohoutek/ueber-uns.html
+        """
+        base_url = base_url.rstrip('/')
+        if base_url.endswith('.html'):
+            base_without_file = '/'.join(base_url.split('/')[:-1])
+            return f"{base_without_file}{suffix}"
+        return f"{base_url}{suffix}"
+
     def _build_kontakt_url(self, base_url: str) -> str:
         """Konstruiert Kontakt-URL aus Base-URL"""
         base_url = base_url.rstrip('/')
