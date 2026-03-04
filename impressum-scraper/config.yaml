@@ -1,0 +1,17 @@
+browser:
+  headless: true
+  timeout: 10000   # Millisekunden pro Seitenaufruf
+  user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+discovery:
+  use_serper: true   # true = Serper API (primär), false = Playwright Google (Fallback)
+
+rate_limits:
+  between_requests_min: 1    # Sekunden — Minimum-Pause zwischen Requests
+  between_requests_max: 3    # Sekunden — Maximum-Pause zwischen Requests
+  pause_after_n_sites: 20    # Lange Pause nach jeweils N Seiten
+  pause_duration: 60         # Sekunden der langen Pause
+
+logging:
+  level: INFO
+  file: scraper.log
