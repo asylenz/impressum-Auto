@@ -87,9 +87,43 @@ Die Datei kommt direkt in den `impressum-scraper/` Ordner.
 
 ## Bot starten
 
+### Schritt 1 — In den richtigen Ordner wechseln
+
+```bash
+cd "/Users/lorentaliu/Desktop/Website-Softwäre /Impressum scrape/impressum-scraper"
+```
+
+> Wenn du das Repo neu geklont hast:
+> ```bash
+> cd impressum-Auto/impressum-scraper
+> ```
+
+### Schritt 2 — Virtual Environment aktivieren
+
+```bash
+source .venv/bin/activate
+```
+
+> Bei Windows: `.venv\Scripts\activate.bat`
+
+### Schritt 3 — (Optional) Alte Ausgabe löschen für einen Neustart
+
+```bash
+rm -f output.csv
+```
+
+> Wenn du weitermachen willst wo du aufgehört hast, diesen Schritt überspringen.
+
+### Schritt 4 — Bot starten
+
 ```bash
 python main.py
 ```
+
+Der Bot läuft jetzt durch alle Firmen und schreibt die Ergebnisse live in `output.csv`.  
+Mit **Ctrl+C** kann er jederzeit unterbrochen werden — beim nächsten Start macht er weiter.
+
+---
 
 ### Weitere Befehle
 

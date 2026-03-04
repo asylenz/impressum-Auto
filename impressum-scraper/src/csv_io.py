@@ -167,7 +167,6 @@ def write_result(filepath: str, result: FirmenResult, retry_mode: bool = False) 
     """
     path = Path(filepath)
 
-    result.finalize()
     if retry_mode and path.exists():
         _update_existing_row(filepath, result)
     else:

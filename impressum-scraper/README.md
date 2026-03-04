@@ -61,40 +61,53 @@ SERPER_API_KEY=dein-key-von-serper.dev
 
 ---
 
-## Verwendung
+## Bot starten
 
-### Standard-Lauf
+### Schritt 1 — In den Ordner wechseln
+
+```bash
+cd "/Users/lorentaliu/Desktop/Website-Softwäre /Impressum scrape/impressum-scraper"
+```
+
+> Wenn du das Repo neu geklont hast:
+> ```bash
+> cd impressum-Auto/impressum-scraper
+> ```
+
+### Schritt 2 — Virtual Environment aktivieren
+
+```bash
+source .venv/bin/activate
+```
+
+> Bei Windows: `.venv\Scripts\activate.bat`
+
+### Schritt 3 — (Optional) Alte Ausgabe löschen für einen Neustart
+
+```bash
+rm -f output.csv
+```
+
+> Wenn du weitermachen willst wo du aufgehört hast, diesen Schritt überspringen.
+
+### Schritt 4 — Bot starten
 
 ```bash
 python main.py
 ```
 
-Liest `firmen.csv`, schreibt Ergebnisse in `output.csv`.
+Der Bot läuft durch alle Firmen und schreibt live in `output.csv`.  
+Mit **Ctrl+C** jederzeit stoppen — beim nächsten Start macht er automatisch weiter.
 
-### Andere Eingabedatei
+---
 
-```bash
-python main.py --input meine_firmenliste.csv
-```
-
-### Andere Ausgabedatei
+### Weitere Befehle
 
 ```bash
-python main.py --output ergebnisse_2024.csv
-```
-
-### Retry — nur fehlgeschlagene Firmen erneut verarbeiten
-
-```bash
-python main.py --retry
-```
-
-Verarbeitet nur Firmen mit Status `kein Ergebnis` aus `output.csv` erneut.
-
-### Kombination
-
-```bash
-python main.py --input firmen.csv --output output.csv --retry
+python main.py --input meine_firmenliste.csv    # andere Eingabedatei
+python main.py --output ergebnisse_2024.csv     # andere Ausgabedatei
+python main.py --retry                          # nur fehlgeschlagene Firmen nochmal
+python main.py --input firmen.csv --retry       # Kombination
 ```
 
 ---
