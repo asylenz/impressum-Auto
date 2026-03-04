@@ -19,18 +19,9 @@ logger = logging.getLogger(__name__)
 
 OUTPUT_COLUMNS = [
     "Firmenname",
-    "GF_Vorname",
-    "GF_Nachname",
-    "Geschaeftsfuehrer",
-    "Telefon_Impressum",
-    "Telefon_Normalisiert",
-    "Telefon_Verzeichnis",
-    "Email",
-    "Strasse",
-    "PLZ",
-    "Ort",
     "Website",
-    "Impressum_URL",
+    "Geschaeftsfuehrer",
+    "Telefonnummer",
     "Status",
 ]
 

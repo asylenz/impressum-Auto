@@ -182,11 +182,6 @@ def main() -> None:
                 result = scraper.scrape(
                     firmenname,
                     website_hint=eintrag.get("website", ""),
-                    telefon_verzeichnis=eintrag.get("telefon", ""),
-                    email=eintrag.get("email", ""),
-                    strasse=eintrag.get("strasse", ""),
-                    plz=eintrag.get("plz", ""),
-                    ort=eintrag.get("ort", ""),
                 )
 
                 # Sofort in CSV schreiben (Abbruch-sicher)
@@ -195,16 +190,16 @@ def main() -> None:
                 logger.info(
                     f"[{i}/{total}] Fertig — Status: {result.status} | "
                     f"GF: {(result.geschaeftsfuehrer[:40] + '…') if len(result.geschaeftsfuehrer) > 40 else result.geschaeftsfuehrer or '-'} | "
-                    f"Tel: {result.telefon_impressum or result.telefon_verzeichnis or '-'}"
+                    f"Tel: {result.telefonnummer or '-'}"
                 )
 
                 # Statistik
                 stats["verarbeitet"] += 1
                 if result.geschaeftsfuehrer:
                     stats["gf_gefunden"] += 1
-                if result.telefon_impressum or result.telefon_verzeichnis:
+                if result.telefonnummer:
                     stats["tel_gefunden"] += 1
-                if not result.geschaeftsfuehrer and not result.telefon_impressum:
+                if not result.geschaeftsfuehrer and not result.telefonnummer:
                     stats["kein_ergebnis"] += 1
 
                 print_progress(i, total, start_time)
