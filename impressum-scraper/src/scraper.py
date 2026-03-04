@@ -97,7 +97,16 @@ class ImpressumScraper:
     # Haupt-Methode
     # -----------------------------------------------------------------------
 
-    def scrape(self, firmenname: str, website_hint: str = "") -> FirmenResult:
+    def scrape(
+        self,
+        firmenname: str,
+        website_hint: str = "",
+        telefon_verzeichnis: str = "",
+        email: str = "",
+        strasse: str = "",
+        plz: str = "",
+        ort: str = "",
+    ) -> FirmenResult:
         """
         Verarbeitet eine Firma in drei Schritten:
 
@@ -107,7 +116,14 @@ class ImpressumScraper:
 
         Gibt immer ein FirmenResult zurück — auch bei Fehlern (dann mit Status-Code).
         """
-        result = FirmenResult(firmenname=firmenname)
+        result = FirmenResult(
+            firmenname=firmenname,
+            telefon_verzeichnis=telefon_verzeichnis,
+            email=email,
+            strasse=strasse,
+            plz=plz,
+            ort=ort,
+        )
         timeout_ms: int = self.config.get("browser.timeout", 10000)
 
         # -------------------------------------------------------------------
@@ -178,7 +194,7 @@ class ImpressumScraper:
             return result
 
         result.geschaeftsfuehrer = gf
-        result.telefonnummer = phone
+        result.telefon_impressum = phone
         result.status = "OK" if (gf or phone) else "kein Ergebnis"
 
         return result

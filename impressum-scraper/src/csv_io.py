@@ -19,12 +19,23 @@ logger = logging.getLogger(__name__)
 
 OUTPUT_COLUMNS = [
     "Firmenname",
+    "GF_Vorname",
+    "GF_Nachname",
+    "Geschaeftsfuehrer",
+    "Telefon_Impressum",
+    "Telefon_Normalisiert",
+    "Telefon_Verzeichnis",
+    "Email",
+    "Strasse",
+    "PLZ",
+    "Ort",
     "Website",
-    "Impressum-URL",
-    "Geschäftsführer",
-    "Telefonnummer",
+    "Impressum_URL",
     "Status",
 ]
+
+# Semikolon als Trennzeichen für deutsches Excel / CRM-Import
+CSV_DELIMITER = ";"
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +73,12 @@ def read_firmen(filepath: str) -> List[dict]:
                 f"Gefundene Spalten: {fields}"
             )
 
-        has_website = "website" in fields
+        has_website  = "website"      in fields
+        has_telefon  = "telefon"      in fields
+        has_email    = "email"        in fields
+        has_street   = "street"       in fields
+        has_plz      = "postal_code"  in fields
+        has_city     = "city"         in fields
 
         for row in reader:
             name = row.get(name_col, "").strip()
@@ -71,8 +87,15 @@ def read_firmen(filepath: str) -> List[dict]:
                 name = name[6:].strip()
             if not name:
                 continue
-            website = row.get("website", "").strip() if has_website else ""
-            firmen.append({"firmenname": name, "website": website})
+            firmen.append({
+                "firmenname": name,
+                "website":    row.get("website",      "").strip() if has_website else "",
+                "telefon":    row.get("telefon",      "").strip() if has_telefon else "",
+                "email":      row.get("email",        "").strip() if has_email   else "",
+                "strasse":    row.get("street",       "").strip() if has_street  else "",
+                "plz":        row.get("postal_code",  "").strip() if has_plz     else "",
+                "ort":        row.get("city",         "").strip() if has_city    else "",
+            })
 
     logger.info(f"{len(firmen)} Firmen aus '{filepath}' geladen (Spalte: '{name_col}')")
     if any(f["website"] for f in firmen):
@@ -140,8 +163,8 @@ def ensure_output_file(filepath: str) -> None:
     path = Path(filepath)
     if not path.exists():
         with open(path, "w", newline="", encoding="utf-8-sig") as f:
-            csv.DictWriter(f, fieldnames=OUTPUT_COLUMNS).writeheader()
-        logger.info(f"Output-Datei erstellt: '{filepath}'")
+            csv.DictWriter(f, fieldnames=OUTPUT_COLUMNS, delimiter=CSV_DELIMITER).writeheader()
+        logger.info(f"Output-Datei erstellt: '{filepath}' (Trennzeichen: Semikolon)")
 
 
 def write_result(filepath: str, result: FirmenResult, retry_mode: bool = False) -> None:
@@ -153,11 +176,12 @@ def write_result(filepath: str, result: FirmenResult, retry_mode: bool = False) 
     """
     path = Path(filepath)
 
+    result.finalize()
     if retry_mode and path.exists():
         _update_existing_row(filepath, result)
     else:
         with open(path, "a", newline="", encoding="utf-8-sig") as f:
-            csv.DictWriter(f, fieldnames=OUTPUT_COLUMNS).writerow(result.to_dict())
+            csv.DictWriter(f, fieldnames=OUTPUT_COLUMNS, delimiter=CSV_DELIMITER).writerow(result.to_dict())
 
 
 def _update_existing_row(filepath: str, result: FirmenResult) -> None:
@@ -182,6 +206,6 @@ def _update_existing_row(filepath: str, result: FirmenResult) -> None:
         rows.append(result.to_dict())
 
     with open(path, "w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, fieldnames=OUTPUT_COLUMNS)
+        writer = csv.DictWriter(f, fieldnames=OUTPUT_COLUMNS, delimiter=CSV_DELIMITER)
         writer.writeheader()
         writer.writerows(rows)
