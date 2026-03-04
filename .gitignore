@@ -1,6 +1,8 @@
 # Environment
 .env
 venv/
+.venv/
+impressum-scraper/.venv/
 __pycache__/
 *.pyc
 *.pyo
