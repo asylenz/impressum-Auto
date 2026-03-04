@@ -97,11 +97,11 @@ class ImpressumScraper:
     # Haupt-Methode
     # -----------------------------------------------------------------------
 
-    def scrape(self, firmenname: str) -> FirmenResult:
+    def scrape(self, firmenname: str, website_hint: str = "") -> FirmenResult:
         """
         Verarbeitet eine Firma in drei Schritten:
 
-        1. Website-URL über Google finden (Serper API / Playwright Fallback)
+        1. Website-URL ermitteln — falls website_hint übergeben wird, entfällt die Google-Suche
         2. Impressum-URL auf der Website finden
         3. Geschäftsführer + Telefonnummer aus dem Impressum extrahieren
 
@@ -111,24 +111,30 @@ class ImpressumScraper:
         timeout_ms: int = self.config.get("browser.timeout", 10000)
 
         # -------------------------------------------------------------------
-        # Schritt 1: Website finden
+        # Schritt 1: Website ermitteln
         # -------------------------------------------------------------------
-        logger.info(f"[1/3] Suche Website für: {firmenname}")
-        try:
-            website = find_company_website(
-                firmenname,
-                self.config,
-                self.rate_limiter,
-                playwright_page=self.page,
-            )
-        except Exception as e:
-            logger.error(f"Unerwarteter Fehler bei Website-Suche für '{firmenname}': {e}")
-            result.status = "keine Website"
-            return result
+        if website_hint:
+            # Website bereits bekannt → Google-Suche überspringen
+            from src.search import get_base_url
+            website = get_base_url(website_hint) if website_hint.startswith("http") else website_hint
+            logger.info(f"[1/3] Website aus CSV übernommen: {website}")
+        else:
+            logger.info(f"[1/3] Suche Website für: {firmenname}")
+            try:
+                website = find_company_website(
+                    firmenname,
+                    self.config,
+                    self.rate_limiter,
+                    playwright_page=self.page,
+                )
+            except Exception as e:
+                logger.error(f"Unerwarteter Fehler bei Website-Suche für '{firmenname}': {e}")
+                result.status = "keine Website"
+                return result
 
-        if not website:
-            result.status = "keine Website"
-            return result
+            if not website:
+                result.status = "keine Website"
+                return result
 
         result.website = website
         self.rate_limiter.wait_between_requests()

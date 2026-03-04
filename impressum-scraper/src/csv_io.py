@@ -31,29 +31,53 @@ OUTPUT_COLUMNS = [
 # Lesen
 # ---------------------------------------------------------------------------
 
-def read_firmen(filepath: str) -> List[str]:
+def read_firmen(filepath: str) -> List[dict]:
     """
-    Liest Firmennamen aus der Eingabe-CSV.
-    Erwartet mindestens Spalte 'Firmenname'.
+    Liest Firmennamen (und optionale Website) aus der Eingabe-CSV.
+
+    Akzeptierte Spalten für den Firmennamen: 'Firmenname' oder 'name'
+    Optionale Spalte: 'website' (wird direkt genutzt, überspringt Google-Suche)
+
+    Gibt eine Liste von Dicts zurück: [{"firmenname": "...", "website": "..."}, ...]
     """
     path = Path(filepath)
     if not path.exists():
         raise FileNotFoundError(f"Eingabe-Datei nicht gefunden: {filepath}")
 
-    firmen: List[str] = []
+    fields = None
+    firmen: List[dict] = []
     with open(path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
-        if "Firmenname" not in (reader.fieldnames or []):
-            raise ValueError(
-                f"Spalte 'Firmenname' fehlt in der CSV. "
-                f"Gefundene Spalten: {reader.fieldnames}"
-            )
-        for row in reader:
-            name = row.get("Firmenname", "").strip()
-            if name:
-                firmen.append(name)
+        fields = reader.fieldnames or []
 
-    logger.info(f"{len(firmen)} Firmennamen aus '{filepath}' geladen")
+        # Spaltenname für Firma ermitteln
+        if "Firmenname" in fields:
+            name_col = "Firmenname"
+        elif "name" in fields:
+            name_col = "name"
+        else:
+            raise ValueError(
+                f"Keine Firmenname-Spalte gefunden. "
+                f"Erwartet: 'Firmenname' oder 'name'. "
+                f"Gefundene Spalten: {fields}"
+            )
+
+        has_website = "website" in fields
+
+        for row in reader:
+            name = row.get(name_col, "").strip()
+            # "Firma " Präfix entfernen (häufig in HWK-Daten)
+            if name.lower().startswith("firma "):
+                name = name[6:].strip()
+            if not name:
+                continue
+            website = row.get("website", "").strip() if has_website else ""
+            firmen.append({"firmenname": name, "website": website})
+
+    logger.info(f"{len(firmen)} Firmen aus '{filepath}' geladen (Spalte: '{name_col}')")
+    if any(f["website"] for f in firmen):
+        count = sum(1 for f in firmen if f["website"])
+        logger.info(f"  → {count} Firmen haben bereits eine Website-URL (Google-Suche wird übersprungen)")
     return firmen
 
 
@@ -83,24 +107,25 @@ def read_existing_results(filepath: str) -> Dict[str, dict]:
     return existing
 
 
-def read_pending_retry(filepath: str) -> List[str]:
+def read_pending_retry(filepath: str) -> List[dict]:
     """
     Gibt Firmen zurück deren Status 'kein ergebnis' ist.
     Wird für --retry Modus verwendet.
+    Gibt Liste von Dicts zurück: [{"firmenname": "...", "website": "..."}, ...]
     """
     path = Path(filepath)
     if not path.exists():
         logger.warning(f"Output-Datei '{filepath}' nicht gefunden — kein Retry möglich")
         return []
 
-    pending: List[str] = []
+    pending: List[dict] = []
     with open(path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         for row in reader:
             firma = row.get("Firmenname", "").strip()
             status = row.get("Status", "").strip().lower()
             if firma and status == "kein ergebnis":
-                pending.append(firma)
+                pending.append({"firmenname": firma, "website": row.get("Website", "").strip()})
 
     logger.info(f"{len(pending)} Firmen mit Status 'kein Ergebnis' für Retry gefunden")
     return pending

@@ -146,7 +146,7 @@ def main() -> None:
         firmen_todo = read_pending_retry(args.output)
         logger.info(f"RETRY-MODUS: {len(firmen_todo)} Firmen werden erneut verarbeitet")
     else:
-        firmen_todo = [f for f in all_firmen if f not in existing]
+        firmen_todo = [f for f in all_firmen if f["firmenname"] not in existing]
         skipped = len(all_firmen) - len(firmen_todo)
         if skipped:
             logger.info(
@@ -175,10 +175,12 @@ def main() -> None:
 
     try:
         with ImpressumScraper(config) as scraper:
-            for i, firmenname in enumerate(firmen_todo, 1):
+            for i, eintrag in enumerate(firmen_todo, 1):
+                firmenname = eintrag["firmenname"]
+                website_hint = eintrag.get("website", "")
                 logger.info(f"[{i}/{total}] Verarbeite: {firmenname}")
 
-                result = scraper.scrape(firmenname)
+                result = scraper.scrape(firmenname, website_hint=website_hint)
 
                 # Sofort in CSV schreiben (Abbruch-sicher)
                 write_result(args.output, result, retry_mode=args.retry)
