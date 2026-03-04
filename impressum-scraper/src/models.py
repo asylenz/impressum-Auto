@@ -1,6 +1,6 @@
 """Datenmodelle für den Impressum-Scraper"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -18,15 +18,17 @@ class FirmenResult:
 
     firmenname: str
     website: str = ""
+    impressum_url: str = ""
     geschaeftsfuehrer: str = ""
     telefonnummer: str = ""
     status: str = ""
 
     def to_dict(self) -> dict:
         return {
-            "Firmenname":       self.firmenname,
-            "Website":          self.website,
-            "Geschaeftsfuehrer": self.geschaeftsfuehrer,
-            "Telefonnummer":    self.telefonnummer,
-            "Status":           self.status,
+            "Firmenname":        self.firmenname,
+            "Website":           self.website,
+            "Impressum-URL":     self.impressum_url,
+            "Geschäftsführer":   self.geschaeftsfuehrer,
+            "Telefonnummer":     self.telefonnummer,
+            "Status":            self.status,
         }

@@ -2,6 +2,8 @@
 
 Automatisierter Bot zum Extrahieren von **Geschäftsführer-Namen** und **Telefonnummern** aus deutschen Impressum-Seiten.
 
+Nutzt **Gemini 3 Flash** (KI) für präzise Datenextraktion und **Serper API** für die Website-Suche.
+
 ---
 
 ## Was macht der Bot?
@@ -9,10 +11,10 @@ Automatisierter Bot zum Extrahieren von **Geschäftsführer-Namen** und **Telefo
 1. Liest eine CSV-Datei mit Firmennamen ein
 2. Sucht die offizielle Website jeder Firma via Google (Serper API)
 3. Findet die Impressum-Seite automatisch
-4. Extrahiert Geschäftsführer-Name und Telefonnummer
-5. Schreibt alles sofort in eine `output.csv`
+4. Extrahiert Geschäftsführer-Name und Telefonnummer mit **Gemini 3 Flash**
+5. Schreibt alles sofort in eine `output.csv` — Semikolon-getrennt, direkt Excel- und CRM-kompatibel
 
-Falls die CSV bereits eine `website`-Spalte enthält, wird die Google-Suche übersprungen — das spart Zeit und API-Credits.
+> Falls die CSV bereits eine `website`-Spalte enthält, wird die Google-Suche übersprungen — spart Zeit und API-Credits.
 
 ---
 
@@ -20,7 +22,8 @@ Falls die CSV bereits eine `website`-Spalte enthält, wird die Google-Suche übe
 
 - Python 3.10 oder neuer
 - macOS / Linux / Windows
-- Serper API Key (kostenlos auf [serper.dev](https://serper.dev) — 2500 Suchen/Monat gratis)
+- **Serper API Key** → [serper.dev](https://serper.dev) — 2500 Suchen/Monat kostenlos
+- **Gemini API Key** → [aistudio.google.com/apikey](https://aistudio.google.com/apikey) — kostenlos
 
 ---
 
@@ -38,7 +41,7 @@ cd impressum-Auto/impressum-scraper
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate        # macOS / Linux
-# .venv\Scripts\activate.bat     # Windows
+# .venv\Scripts\activate.bat    # Windows
 ```
 
 ### 3. Abhängigkeiten installieren
@@ -48,55 +51,56 @@ pip install -r requirements.txt
 playwright install chromium
 ```
 
-### 4. API Key einrichten
+### 4. `.env` Datei einrichten
 
 ```bash
 cp .env.example .env
 ```
 
-`.env` öffnen und den Serper Key eintragen:
+`.env` öffnen und beide API Keys eintragen:
 
-```
+```env
 SERPER_API_KEY=dein-key-von-serper.dev
+GEMINI_API_KEY=dein-key-von-aistudio.google.com
 ```
+
+| Key | Woher | Kosten |
+|---|---|---|
+| `SERPER_API_KEY` | [serper.dev](https://serper.dev) | 2500 Suchen/Monat gratis |
+| `GEMINI_API_KEY` | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | Kostenlos |
 
 ---
 
-## Eingabe-CSV vorbereiten
+## Eingabe-CSV
 
-Die CSV-Datei muss entweder eine Spalte `Firmenname` **oder** `name` enthalten.
-Optional: eine Spalte `website` — dann wird die Google-Suche übersprungen.
+Die Datei muss eine Spalte `Firmenname` **oder** `name` enthalten.  
+Datei direkt in den `impressum-scraper/` Ordner legen als `firmen.csv`.
 
 **Minimales Format:**
 ```csv
 Firmenname
-Mustermann GmbH
-Beispiel AG
+Firma Mustermann GmbH
+Firma Beispiel AG
 ```
 
-**Erweitertes Format (mit Website — schneller):**
+**Erweitertes Format** (mit Website — überspringt Google-Suche, schneller):
 ```csv
-Firmenname,website
-Mustermann GmbH,https://www.mustermann.de
-Beispiel AG,
+name,website
+Firma Mustermann GmbH,https://www.mustermann.de
+Firma Beispiel AG,
 ```
-
-Die Datei kommt direkt in den `impressum-scraper/` Ordner.
 
 ---
 
 ## Bot starten
 
-### Schritt 1 — In den richtigen Ordner wechseln
+> **Wichtig:** Immer nur **einen** Bot-Prozess gleichzeitig starten!
+
+### Schritt 1 — In den Ordner wechseln
 
 ```bash
-cd "/Users/lorentaliu/Desktop/Website-Softwäre /Impressum scrape/impressum-scraper"
+cd impressum-Auto/impressum-scraper
 ```
-
-> Wenn du das Repo neu geklont hast:
-> ```bash
-> cd impressum-Auto/impressum-scraper
-> ```
 
 ### Schritt 2 — Virtual Environment aktivieren
 
@@ -104,15 +108,15 @@ cd "/Users/lorentaliu/Desktop/Website-Softwäre /Impressum scrape/impressum-scra
 source .venv/bin/activate
 ```
 
-> Bei Windows: `.venv\Scripts\activate.bat`
+> Windows: `.venv\Scripts\activate.bat`
 
-### Schritt 3 — (Optional) Alte Ausgabe löschen für einen Neustart
+### Schritt 3 — Alte Ausgabe löschen (nur beim Neustart nötig)
 
 ```bash
 rm -f output.csv
 ```
 
-> Wenn du weitermachen willst wo du aufgehört hast, diesen Schritt überspringen.
+> Weglassen wenn du dort weitermachen willst, wo du aufgehört hast.
 
 ### Schritt 4 — Bot starten
 
@@ -120,45 +124,47 @@ rm -f output.csv
 python main.py
 ```
 
-Der Bot läuft jetzt durch alle Firmen und schreibt die Ergebnisse live in `output.csv`.  
-Mit **Ctrl+C** kann er jederzeit unterbrochen werden — beim nächsten Start macht er weiter.
+Der Bot läuft durch alle Firmen und schreibt Ergebnisse live in `output.csv`.  
+Mit **Ctrl+C** jederzeit stoppen — beim nächsten Start macht er automatisch weiter.
 
 ---
 
-### Weitere Befehle
+## Weitere Befehle
 
 ```bash
-python main.py --input meine_firmen.csv     # andere Eingabedatei
-python main.py --output ergebnis.csv        # andere Ausgabedatei
-python main.py --retry                      # nur fehlgeschlagene Firmen nochmal
+python main.py --input andere_liste.csv    # andere Eingabedatei
+python main.py --output ergebnis.csv       # andere Ausgabedatei
+python main.py --retry                     # nur Firmen mit "kein Ergebnis" nochmal versuchen
 ```
 
 ---
 
 ## Ausgabe (`output.csv`)
 
+Semikolon-getrennt, alle Felder gequotet — direkt in **Excel** öffnen oder ins **CRM** importieren.
+
 | Firmenname | Website | Impressum-URL | Geschäftsführer | Telefonnummer | Status |
 |---|---|---|---|---|---|
-| Mustermann GmbH | https://www.mustermann.de | https://www.mustermann.de/impressum | Max Mustermann | +49 30 123456 | OK |
-| Beispiel AG | https://www.beispiel.de | https://www.beispiel.de/impressum | Anna Schmidt | 089 654321 | OK |
-| Fehler GmbH | | | | | keine Website |
+| Firma Mustermann GmbH | https://mustermann.de | https://mustermann.de/impressum | Max Mustermann | +49 89 123456 | OK |
+| Firma Beispiel AG | https://beispiel.de | https://beispiel.de/impressum | Anna Schmidt, Lars Bauer | 089 654321 | OK |
+| Firma Fehler GmbH | | | | | keine Website |
 
 ### Status-Codes
 
 | Status | Bedeutung |
 |---|---|
 | `OK` | Mindestens Geschäftsführer oder Telefon gefunden |
-| `kein Ergebnis` | Impressum geladen, aber keine Daten gefunden |
+| `kein Ergebnis` | Impressum geladen, aber keine Daten extrahierbar |
 | `keine Website` | Keine valide Firmen-Website gefunden |
 | `kein Impressum` | Website gefunden, Impressum nicht auffindbar |
 | `timeout` | Seitenaufruf hat zu lange gedauert |
 
 ---
 
-## Abbruch und Fortsetzen
+## Abbruch-Sicherheit
 
-Der Bot schreibt das Ergebnis **sofort nach jeder Firma** in `output.csv`.
-Bei `Ctrl+C` stoppt er sauber. Beim nächsten Start werden bereits verarbeitete Firmen automatisch übersprungen.
+Der Bot schreibt nach **jeder einzelnen Firma** sofort in `output.csv`.  
+Bei `Ctrl+C` stoppt er sauber. Beim nächsten `python main.py` werden bereits verarbeitete Firmen automatisch übersprungen.
 
 ---
 
@@ -184,7 +190,7 @@ Bei `Ctrl+C` stoppt er sauber. Beim nächsten Start werden bereits verarbeitete 
 
 ```yaml
 browser:
-  headless: true        # false = sichtbarer Browser zum Debuggen
+  headless: true        # false = sichtbarer Browser (nützlich zum Debuggen)
   timeout: 10000        # Millisekunden pro Seitenaufruf
 
 discovery:
@@ -195,6 +201,10 @@ rate_limits:
   between_requests_max: 3    # Maximalpause zwischen Requests (Sekunden)
   pause_after_n_sites: 20    # Lange Pause nach N Firmen
   pause_duration: 60         # Dauer der langen Pause (Sekunden)
+
+logging:
+  level: INFO           # DEBUG für detaillierte Logs
+  file: scraper.log     # Log-Datei
 ```
 
 ---
@@ -208,7 +218,20 @@ discovery:
   use_serper: false
 ```
 
-Dann wird Playwright direkt für Google-Suchen verwendet — kein API Key nötig, aber etwas langsamer und anfälliger für CAPTCHAs.
+Dann nutzt der Bot Playwright direkt für Google-Suchen — kein API Key nötig, aber langsamer und anfälliger für CAPTCHAs.
+
+---
+
+## Technologie-Stack
+
+| Bibliothek | Zweck |
+|---|---|
+| `playwright` | Browser-Automatisierung (JavaScript-Rendering, Impressum laden) |
+| `beautifulsoup4` | HTML-Parsing |
+| `requests` | Schnelle HEAD-Requests (Impressum-Pfad-Prüfung) |
+| `google-genai` | Gemini 3 Flash — KI-Extraktion von GF-Name und Telefon |
+| `pyyaml` | YAML-Konfiguration |
+| `python-dotenv` | `.env` Datei laden |
 
 ---
 
@@ -216,21 +239,22 @@ Dann wird Playwright direkt für Google-Suchen verwendet — kein API Key nötig
 
 ```
 impressum-scraper/
-├── main.py                  ← Einstiegspunkt
+├── main.py                  ← Einstiegspunkt (CLI, Fortschrittsanzeige)
 ├── config.yaml              ← Einstellungen
 ├── .env                     ← API Keys (nicht ins Git!)
 ├── .env.example             ← Vorlage für .env
-├── requirements.txt         ← Abhängigkeiten
+├── requirements.txt         ← Python-Abhängigkeiten
 ├── firmen.csv               ← Deine Eingabedatei
-├── output.csv               ← Ergebnisse (wird automatisch erstellt)
+├── output.csv               ← Ergebnisse (wird automatisch erstellt, nicht ins Git)
+├── scraper.log              ← Log-Datei (wird automatisch erstellt)
 └── src/
-    ├── config.py            ← YAML-Konfiguration
-    ├── models.py            ← Datenmodelle
+    ├── config.py            ← YAML-Konfiguration laden
+    ├── models.py            ← Datenmodelle (FirmenResult, SearchResult)
     ├── rate_limiter.py      ← Pausen zwischen Requests
-    ├── utils.py             ← Hilfsfunktionen
-    ├── search.py            ← Website-Suche (Serper + Playwright)
-    ├── impressum_finder.py  ← Impressum-URL finden
-    ├── impressum_parser.py  ← Daten aus Impressum extrahieren
-    ├── csv_io.py            ← CSV lesen/schreiben
-    └── scraper.py           ← Haupt-Orchestrierung
+    ├── utils.py             ← Hilfsfunktionen (Telefon, URL-Normalisierung)
+    ├── search.py            ← Website-Suche (Serper API + Playwright Fallback)
+    ├── impressum_finder.py  ← Impressum-URL automatisch finden
+    ├── impressum_parser.py  ← GF + Telefon via Gemini 3 Flash extrahieren
+    ├── csv_io.py            ← CSV lesen/schreiben (Semikolon, QUOTE_ALL)
+    └── scraper.py           ← Haupt-Orchestrierung aller Schritte
 ```

@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 OUTPUT_COLUMNS = [
     "Firmenname",
     "Website",
-    "Geschaeftsfuehrer",
+    "Impressum-URL",
+    "Geschäftsführer",
     "Telefonnummer",
     "Status",
 ]
@@ -73,9 +74,6 @@ def read_firmen(filepath: str) -> List[dict]:
 
         for row in reader:
             name = row.get(name_col, "").strip()
-            # "Firma " Präfix entfernen (häufig in HWK-Daten)
-            if name.lower().startswith("firma "):
-                name = name[6:].strip()
             if not name:
                 continue
             firmen.append({
@@ -107,7 +105,7 @@ def read_existing_results(filepath: str) -> Dict[str, dict]:
 
     existing: Dict[str, dict] = {}
     with open(path, newline="", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
+        reader = csv.DictReader(f, delimiter=CSV_DELIMITER)
         for row in reader:
             firma = row.get("Firmenname", "").strip()
             status = row.get("Status", "").strip()
@@ -134,7 +132,7 @@ def read_pending_retry(filepath: str) -> List[dict]:
 
     pending: List[dict] = []
     with open(path, newline="", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
+        reader = csv.DictReader(f, delimiter=CSV_DELIMITER)
         for row in reader:
             firma = row.get("Firmenname", "").strip()
             status = row.get("Status", "").strip().lower()
@@ -149,12 +147,24 @@ def read_pending_retry(filepath: str) -> List[dict]:
 # Schreiben
 # ---------------------------------------------------------------------------
 
+def _make_writer(f) -> csv.DictWriter:
+    """Erstellt einen DictWriter mit einheitlichen Einstellungen."""
+    return csv.DictWriter(
+        f,
+        fieldnames=OUTPUT_COLUMNS,
+        delimiter=CSV_DELIMITER,
+        quoting=csv.QUOTE_ALL,        # Alle Felder quoten → keine Mehrzeiler-Probleme
+        extrasaction="ignore",        # Unbekannte Felder ignorieren
+        lineterminator="\n",
+    )
+
+
 def ensure_output_file(filepath: str) -> None:
     """Erstellt die Output-CSV mit Header, falls sie noch nicht existiert."""
     path = Path(filepath)
     if not path.exists():
         with open(path, "w", newline="", encoding="utf-8-sig") as f:
-            csv.DictWriter(f, fieldnames=OUTPUT_COLUMNS, delimiter=CSV_DELIMITER).writeheader()
+            _make_writer(f).writeheader()
         logger.info(f"Output-Datei erstellt: '{filepath}' (Trennzeichen: Semikolon)")
 
 
@@ -167,11 +177,18 @@ def write_result(filepath: str, result: FirmenResult, retry_mode: bool = False) 
     """
     path = Path(filepath)
 
+    # Newlines in Feldern bereinigen (Sicherheitsnetz gegen mehrzeilige Werte)
+    data = result.to_dict()
+    for key in data:
+        if isinstance(data[key], str):
+            data[key] = " ".join(data[key].split())
+
     if retry_mode and path.exists():
         _update_existing_row(filepath, result)
     else:
         with open(path, "a", newline="", encoding="utf-8-sig") as f:
-            csv.DictWriter(f, fieldnames=OUTPUT_COLUMNS, delimiter=CSV_DELIMITER).writerow(result.to_dict())
+            writer = _make_writer(f)
+            writer.writerow(data)
 
 
 def _update_existing_row(filepath: str, result: FirmenResult) -> None:
@@ -184,18 +201,26 @@ def _update_existing_row(filepath: str, result: FirmenResult) -> None:
     updated = False
 
     with open(path, newline="", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
+        reader = csv.DictReader(f, delimiter=CSV_DELIMITER)
         for row in reader:
             if row.get("Firmenname", "").strip() == result.firmenname:
-                rows.append(result.to_dict())
+                data = result.to_dict()
+                for key in data:
+                    if isinstance(data[key], str):
+                        data[key] = " ".join(data[key].split())
+                rows.append(data)
                 updated = True
             else:
                 rows.append(dict(row))
 
     if not updated:
-        rows.append(result.to_dict())
+        data = result.to_dict()
+        for key in data:
+            if isinstance(data[key], str):
+                data[key] = " ".join(data[key].split())
+        rows.append(data)
 
     with open(path, "w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, fieldnames=OUTPUT_COLUMNS, delimiter=CSV_DELIMITER)
+        writer = _make_writer(f)
         writer.writeheader()
         writer.writerows(rows)
