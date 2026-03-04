@@ -10,6 +10,7 @@ CSV Ein- und Ausgabe für den Impressum-Scraper.
 
 import csv
 import logging
+import os
 from pathlib import Path
 from typing import Dict, List
 
@@ -220,7 +221,11 @@ def _update_existing_row(filepath: str, result: FirmenResult) -> None:
                 data[key] = " ".join(data[key].split())
         rows.append(data)
 
-    with open(path, "w", newline="", encoding="utf-8-sig") as f:
+    # Atomares Schreiben: erst in Temp-Datei, dann umbenennen.
+    # Verhindert Datenverlust wenn der Prozess während des Schreibens abbricht.
+    tmp_path = path.with_suffix(".tmp")
+    with open(tmp_path, "w", newline="", encoding="utf-8-sig") as f:
         writer = _make_writer(f)
         writer.writeheader()
         writer.writerows(rows)
+    os.replace(tmp_path, path)  # atomare Operation auf allen gängigen Dateisystemen

@@ -21,9 +21,11 @@ def normalize_phone(phone: str) -> str:
 
 
 def is_valid_phone(text: str) -> bool:
-    """Gibt True zurück, wenn text wie eine Telefonnummer aussieht"""
-    pattern = r"^[\+\(\)\d\s\/-]{5,}$"
-    return bool(re.match(pattern, text.strip()))
+    """Gibt True zurück, wenn text wie eine Telefonnummer aussieht (mind. 5 Ziffern)"""
+    t = text.strip()
+    if not re.match(r'^[\+\(\)\d\s\/-]{5,}$', t):
+        return False
+    return len(re.sub(r'\D', '', t)) >= 5
 
 
 def normalize_string_for_matching(text: str) -> str:
