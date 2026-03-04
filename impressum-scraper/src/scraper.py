@@ -115,10 +115,8 @@ class ImpressumScraper:
         # -------------------------------------------------------------------
         if website_hint:
             # Website bereits bekannt → Google-Suche überspringen
-            # Schema sicherstellen: "www.firma.de" → "https://www.firma.de"
             from src.search import get_base_url
-            hint = website_hint if website_hint.startswith("http") else f"https://{website_hint}"
-            website = get_base_url(hint)
+            website = get_base_url(website_hint) if website_hint.startswith("http") else website_hint
             logger.info(f"[1/3] Website aus CSV übernommen: {website}")
         else:
             logger.info(f"[1/3] Suche Website für: {firmenname}")

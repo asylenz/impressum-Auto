@@ -45,18 +45,8 @@ def _extract_with_gemini(plain_text: str) -> Tuple[str, str]:
 
         client = genai.Client(api_key=api_key)
 
-        # Impressum-relevanten Abschnitt finden: suche nach dem ersten GF/Impressum-Keyword
-        # und nimm 500 Zeichen davor bis 3000 Zeichen danach.
-        # Fallback: erste 4000 Zeichen.
-        _anchor = re.search(
-            r'(Gesch[äa]ftsf[üu]hrer|Inhaber|Vertreten\s+durch|Impressum|Telefon|Tel\.?\s*:)',
-            plain_text, re.IGNORECASE
-        )
-        if _anchor:
-            start = max(0, _anchor.start() - 500)
-            text = plain_text[start:start + 3500]
-        else:
-            text = plain_text[:4000]
+        # Text auf 4000 Zeichen begrenzen (Impressum-relevanter Teil)
+        text = plain_text[:4000]
 
         prompt = f"""Analysiere diesen deutschen Impressum-Text und extrahiere genau:
 
@@ -105,10 +95,9 @@ Impressum-Text:
         if tel.lower() in _empty_vals:
             tel = ""
 
-        # Sicherheitscheck: GF-Feld darf keine URL/Tel-Fragmente enthalten
-        # \b passt nicht für @, www., http — daher getrennte Patterns
-        if gf and re.search(r'\b(tel|fax|kontakt|telefon|fon)\b|[@]|www\.|https?://', gf, re.IGNORECASE):
-            logger.debug(f"Gemini GF enthält unerwünschte Inhalte, verwerfe: '{gf}'")
+        # Sicherheitscheck: GF-Feld darf keine Wörter wie Tel/Kontakt/Fax enthalten
+        if gf and re.search(r'\b(tel|fax|kontakt|telefon|fon|@|www\.|http)\b', gf, re.IGNORECASE):
+            logger.debug(f"Gemini GF enthält unerwünschte Wörter, verwerfe: '{gf}'")
             gf = ""
 
         if gf or tel:
@@ -271,10 +260,10 @@ def extract_gf_fallback(plain_text: str) -> str:
 
     for i, line in enumerate(lines):
         line_stripped = line.strip()
-        kw_match = GF_KEYWORDS.search(line_stripped)
-        if not kw_match:
+        if not GF_KEYWORDS.search(line_stripped):
             continue
 
+        kw_match = GF_KEYWORDS.search(line_stripped)
         text_after = line_stripped[kw_match.end():]
         text_after = re.sub(r'^[\s:,]+', '', text_after)
 

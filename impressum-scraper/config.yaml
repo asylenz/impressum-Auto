@@ -1,7 +1,7 @@
 browser:
   headless: true
   timeout: 10000   # Millisekunden pro Seitenaufruf
-  user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+  user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 discovery:
   use_serper: true   # true = Serper API (primär), false = Playwright Google (Fallback)

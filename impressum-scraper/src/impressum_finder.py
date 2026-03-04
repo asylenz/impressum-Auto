@@ -78,7 +78,7 @@ def _find_impressum_link_in_html(html: str, base_url: str) -> Optional[str]:
             text = tag.get_text(separator=" ").lower().strip()
             if "impressum" in href or "imprint" in href:
                 return urljoin(base_url, tag["href"])
-            if ("impressum" in text or "imprint" in text) and len(text) < 50:
+            if "impressum" in text and len(text) < 50:
                 return urljoin(base_url, tag["href"])
     except Exception as e:
         logger.debug(f"HTML-Parsing Fehler in _find_impressum_link_in_html: {e}")
