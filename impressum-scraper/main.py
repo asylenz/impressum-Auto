@@ -207,12 +207,18 @@ def main() -> None:
         firmen_todo = [f for f in all_firmen if f["firmenname"] not in existing]
         skipped = len(all_firmen) - len(firmen_todo)
         if skipped:
+            naechste = firmen_todo[0]["firmenname"] if firmen_todo else "—"
+            print(
+                f"\n▶  FORTSETZUNG — {skipped} von {len(all_firmen)} Firmen bereits verarbeitet.\n"
+                f"   Weiter bei: {naechste}\n"
+            )
             logger.info(
-                f"{skipped} Firmen bereits verarbeitet — werden übersprungen"
+                f"Fortsetzung: {skipped} bereits verarbeitet, starte bei '{naechste}'"
             )
 
     if not firmen_todo:
-        logger.info("Keine Firmen zu verarbeiten. Bot beendet.")
+        print("\n✅  Alle Firmen wurden bereits verarbeitet. Nichts zu tun.\n")
+        logger.info("Alle Firmen bereits verarbeitet — Bot beendet.")
         return
 
     logger.info(f"{len(firmen_todo)} Firmen werden verarbeitet...")
