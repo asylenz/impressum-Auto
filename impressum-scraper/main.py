@@ -6,11 +6,19 @@ Befehle:
     python main.py --input meine.csv        Andere Eingabedatei
     python main.py --output ergebnis.csv    Andere Ausgabedatei
     python main.py --retry                  Nur Firmen mit Status "kein Ergebnis" erneut
+
+Pause / Fortsetzen:
+    Ctrl+C              → Bot PAUSIERT (Fortschritt wird gespeichert)
+                          Danach: Enter zum Fortsetzen  |  Ctrl+C nochmal zum Beenden
+    Bot neu starten     → Automatisch dort weitermachen wo er aufgehört hat
 """
 
 import argparse
 import logging
+import os
+import signal
 import sys
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -31,6 +39,52 @@ from src.csv_io import (
     read_pending_retry,
     write_result,
 )
+
+
+# ---------------------------------------------------------------------------
+# Pause / Stop Steuerung
+# ---------------------------------------------------------------------------
+
+# _pause_flag gesetzt (set) = läuft normal; gelöscht (clear) = pausiert
+_pause_flag = threading.Event()
+_pause_flag.set()
+
+_stop_flag = threading.Event()
+
+
+def _install_sigint_handler() -> None:
+    """
+    Ctrl+C → pausiert den Bot (statt ihn sofort zu beenden).
+    Während der Pause: Enter = Fortsetzen, Ctrl+C nochmal = Beenden.
+    """
+    def handler(signum, frame):
+        if not _pause_flag.is_set():
+            # Bereits pausiert → jetzt wirklich stoppen
+            _stop_flag.set()
+            _pause_flag.set()  # Haupt-Loop entsperren
+            print("\n\n🛑  Bot wird beendet — Fortschritt wurde gespeichert.\n")
+        else:
+            # Läuft → pausieren
+            _pause_flag.clear()
+            print(
+                "\n\n⏸  PAUSIERT — Fortschritt bis hierher gespeichert.\n"
+                "   → Drücke ENTER zum Fortsetzen\n"
+                "   → Drücke Ctrl+C nochmal zum vollständigen Beenden\n"
+            )
+            # Hintergrund-Thread wartet auf Enter-Taste
+            def _wait_for_enter():
+                try:
+                    input()
+                    if not _stop_flag.is_set() and not _pause_flag.is_set():
+                        _pause_flag.set()
+                        print("▶  FORTGESETZT\n")
+                except Exception:
+                    pass
+
+            t = threading.Thread(target=_wait_for_enter, daemon=True)
+            t.start()
+
+    signal.signal(signal.SIGINT, handler)
 
 
 # ---------------------------------------------------------------------------
@@ -124,12 +178,16 @@ def main() -> None:
     setup_logging(config)
     logger = logging.getLogger(__name__)
 
+    _install_sigint_handler()
+
     logger.info("=" * 60)
     logger.info("Impressum-Scraper startet...")
     logger.info(f"  Eingabe:  {args.input}")
     logger.info(f"  Ausgabe:  {args.output}")
     logger.info(f"  Retry:    {args.retry}")
+    logger.info(f"  PID:      {os.getpid()}")
     logger.info("=" * 60)
+    print("  Steuerung: Ctrl+C = Pausieren | Enter = Fortsetzen | Ctrl+C (2x) = Beenden\n")
 
     # Firmenliste laden
     try:
@@ -173,39 +231,42 @@ def main() -> None:
     }
     total = len(firmen_todo)
 
-    try:
-        with ImpressumScraper(config) as scraper:
-            for i, eintrag in enumerate(firmen_todo, 1):
-                firmenname = eintrag["firmenname"]
-                logger.info(f"[{i}/{total}] Verarbeite: {firmenname}")
+    with ImpressumScraper(config) as scraper:
+        for i, eintrag in enumerate(firmen_todo, 1):
+            # Pause-Punkt: wartet hier bis Benutzer Enter drückt (oder direkt weiter)
+            _pause_flag.wait()
 
-                result = scraper.scrape(
-                    firmenname,
-                    website_hint=eintrag.get("website", ""),
-                )
+            if _stop_flag.is_set():
+                logger.warning("Bot durch Benutzer gestoppt — Fortschritt gespeichert")
+                break
 
-                # Sofort in CSV schreiben (Abbruch-sicher)
-                write_result(args.output, result, retry_mode=args.retry)
+            firmenname = eintrag["firmenname"]
+            logger.info(f"[{i}/{total}] Verarbeite: {firmenname}")
 
-                logger.info(
-                    f"[{i}/{total}] Fertig — Status: {result.status} | "
-                    f"GF: {(result.geschaeftsfuehrer[:40] + '…') if len(result.geschaeftsfuehrer) > 40 else result.geschaeftsfuehrer or '-'} | "
-                    f"Tel: {result.telefonnummer or '-'}"
-                )
+            result = scraper.scrape(
+                firmenname,
+                website_hint=eintrag.get("website", ""),
+            )
 
-                # Statistik
-                stats["verarbeitet"] += 1
-                if result.geschaeftsfuehrer:
-                    stats["gf_gefunden"] += 1
-                if result.telefonnummer:
-                    stats["tel_gefunden"] += 1
-                if not result.geschaeftsfuehrer and not result.telefonnummer:
-                    stats["kein_ergebnis"] += 1
+            # Sofort in CSV schreiben (Abbruch-sicher)
+            write_result(args.output, result, retry_mode=args.retry)
 
-                print_progress(i, total, start_time)
+            logger.info(
+                f"[{i}/{total}] Fertig — Status: {result.status} | "
+                f"GF: {(result.geschaeftsfuehrer[:40] + '…') if len(result.geschaeftsfuehrer) > 40 else result.geschaeftsfuehrer or '-'} | "
+                f"Tel: {result.telefonnummer or '-'}"
+            )
 
-    except KeyboardInterrupt:
-        logger.warning("Bot durch Benutzer abgebrochen (Ctrl+C) — Fortschritt gespeichert")
+            # Statistik
+            stats["verarbeitet"] += 1
+            if result.geschaeftsfuehrer:
+                stats["gf_gefunden"] += 1
+            if result.telefonnummer:
+                stats["tel_gefunden"] += 1
+            if not result.geschaeftsfuehrer and not result.telefonnummer:
+                stats["kein_ergebnis"] += 1
+
+            print_progress(i, total, start_time)
 
     logger.info("=" * 60)
     logger.info("Impressum-Scraper beendet.")

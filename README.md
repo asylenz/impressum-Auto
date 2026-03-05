@@ -124,8 +124,35 @@ rm -f output.csv
 python main.py
 ```
 
-Der Bot läuft durch alle Firmen und schreibt Ergebnisse live in `output.csv`.  
-Mit **Ctrl+C** jederzeit stoppen — beim nächsten Start macht er automatisch weiter.
+Der Bot läuft durch alle Firmen und schreibt Ergebnisse live in `output.csv`.
+
+---
+
+## Pausieren & Fortsetzen
+
+| Aktion | Was passieren |
+|---|---|
+| **Ctrl+C** (einmal) | Bot pausiert sofort nach der aktuellen Firma — Fortschritt gespeichert |
+| **Enter** | Bot läuft weiter (nach Pause) |
+| **Ctrl+C** (nochmal, während pausiert) | Bot beendet sich vollständig |
+| **Bot neu starten** (`python main.py`) | Automatisch dort weitermachen wo er aufgehört hat |
+
+**Beispiel: Heute 1000 Firmen, morgen weitermachen:**
+
+```bash
+# Bot läuft...
+# [1000/3485] Verarbeite: XY GmbH
+# → Ctrl+C drücken
+# ⏸  PAUSIERT — Fortschritt bis hierher gespeichert.
+#    → Drücke ENTER zum Fortsetzen
+#    → Drücke Ctrl+C nochmal zum vollständigen Beenden
+
+# Ctrl+C nochmal → Bot beendet sich
+
+# Am nächsten Tag:
+python main.py
+# Bot startet automatisch bei Firma 1001 weiter
+```
 
 ---
 
@@ -164,7 +191,8 @@ Semikolon-getrennt, alle Felder gequotet — direkt in **Excel** öffnen oder in
 ## Abbruch-Sicherheit
 
 Der Bot schreibt nach **jeder einzelnen Firma** sofort in `output.csv`.  
-Bei `Ctrl+C` stoppt er sauber. Beim nächsten `python main.py` werden bereits verarbeitete Firmen automatisch übersprungen.
+Kein Datenverlust bei Stromausfall, Absturz oder manuellem Stopp.  
+Beim nächsten `python main.py` werden bereits verarbeitete Firmen automatisch übersprungen — der Bot macht genau dort weiter wo er aufgehört hat.
 
 ---
 
