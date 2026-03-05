@@ -38,3 +38,6 @@ linkedin_state/
 # OS
 .DS_Store
 Thumbs.db
+
+# Fortschritts-Datei (lokal, nicht ins Git)
+impressum-scraper/progress.json

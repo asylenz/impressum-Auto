@@ -14,6 +14,7 @@ Pause / Fortsetzen:
 """
 
 import argparse
+import json
 import logging
 import os
 import signal
@@ -39,6 +40,38 @@ from src.csv_io import (
     read_pending_retry,
     write_result,
 )
+
+
+# ---------------------------------------------------------------------------
+# Fortschritts-Datei (progress.json)
+# ---------------------------------------------------------------------------
+
+PROGRESS_FILE = project_root / "progress.json"
+
+
+def _save_progress(zeile: int, gesamt: int, firmenname: str, status: str = "läuft") -> None:
+    """Schreibt den aktuellen Fortschritt in progress.json."""
+    data = {
+        "status":       status,
+        "letzte_zeile": zeile,
+        "gesamt":       gesamt,
+        "letzte_firma": firmenname,
+        "zeitstempel":  datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    try:
+        PROGRESS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _load_progress() -> dict:
+    """Liest progress.json falls vorhanden."""
+    if PROGRESS_FILE.exists():
+        try:
+            return json.loads(PROGRESS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +220,16 @@ def main() -> None:
 
     _install_sigint_handler()
 
+    # Letzten Fortschritt anzeigen (falls vorhanden)
+    prev = _load_progress()
+    if prev:
+        print(
+            f"\n📋 Letzter bekannter Fortschritt:\n"
+            f"   Zeile {prev.get('letzte_zeile','?')} / {prev.get('gesamt','?')} — "
+            f"{prev.get('letzte_firma','?')}\n"
+            f"   Status: {prev.get('status','?')} | {prev.get('zeitstempel','?')}\n"
+        )
+
     logger.info("=" * 60)
     logger.info("Impressum-Scraper startet...")
     logger.info(f"  Eingabe:  {args.input}")
@@ -285,6 +328,9 @@ def main() -> None:
             # Sofort in CSV schreiben (Abbruch-sicher)
             write_result(args.output, result, retry_mode=args.retry)
 
+            # Fortschritt in progress.json speichern
+            _save_progress(display_i, len(all_firmen), firmenname)
+
             logger.info(
                 f"[{display_i}/{len(all_firmen)}] Fertig — Status: {result.status} | "
                 f"GF: {(result.geschaeftsfuehrer[:40] + '…') if len(result.geschaeftsfuehrer) > 40 else result.geschaeftsfuehrer or '-'} | "
@@ -301,6 +347,16 @@ def main() -> None:
                 stats["kein_ergebnis"] += 1
 
             print_progress(display_i, len(all_firmen), start_time)
+
+    # Endzustand in progress.json festhalten
+    end_status = "gestoppt" if _stop_flag.is_set() else "abgeschlossen"
+    if stats["verarbeitet"] > 0:
+        _save_progress(
+            display_offset + stats["verarbeitet"],
+            len(all_firmen),
+            firmen_todo[stats["verarbeitet"] - 1]["firmenname"] if firmen_todo else "—",
+            status=end_status,
+        )
 
     logger.info("=" * 60)
     logger.info("Impressum-Scraper beendet.")
