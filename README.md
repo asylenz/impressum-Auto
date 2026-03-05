@@ -165,19 +165,36 @@ python main.py --retry                     # nur Firmen mit "kein Ergebnis" noch
 python main.py --start 1200               # direkt ab Zeile 1200 starten
 ```
 
-### `--start N` — Manuell ab einer bestimmten Zeile starten
+### `--start N` — Beliebigen Startpunkt wählen
 
-Falls das Terminal geschlossen wurde oder du genau weißt bei welcher Zeilennummer du warst:
+Mit `--start N` kannst du bei **jeder beliebigen Zeilennummer** einsteigen — egal ob 10, 500, 1200 oder 3000:
 
 ```bash
-python main.py --start 1200
-# → Startet direkt bei Firma Nr. 1200 in der firmen.csv
-# → Zeigt: "MANUELLER START ab Zeile 1200 — Erste Firma: XY GmbH"
+python main.py --start 10      # ab Zeile 10
+python main.py --start 500     # ab Zeile 500
+python main.py --start 1200    # ab Zeile 1200
+python main.py --start 3000    # ab Zeile 3000
 ```
 
-Die Zeilennummer siehst du während des Laufens im Terminal:
+Beim Start zeigt der Bot:
+```
+▶  MANUELLER START ab Zeile 1200 von 3485
+   Erste Firma: XY GmbH
+```
+
+**Wann `--start` verwenden:**
+
+| Situation | Befehl |
+|---|---|
+| Terminal geschlossen, letzte Zahl war 1200 | `python main.py --start 1200` |
+| output.csv gelöscht, neu ab 500 | `python main.py --start 500` |
+| Nur den letzten Abschnitt verarbeiten | `python main.py --start 3000` |
+| Normaler Neustart (output.csv vorhanden) | `python main.py` (kein --start nötig) |
+
+Die aktuelle Zeilennummer siehst du immer im Terminal — merk sie dir bevor du das Fenster schließt:
 ```
 [1200/3485] Verarbeite: XY GmbH
+     ↑ diese Zahl für --start merken
 ```
 
 ---
