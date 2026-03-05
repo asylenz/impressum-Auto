@@ -170,6 +170,13 @@ def main() -> None:
         action="store_true",
         help="Nur Firmen mit Status 'kein Ergebnis' erneut verarbeiten",
     )
+    parser.add_argument(
+        "--start",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Ab Zeile N in der Eingabeliste starten (1-basiert, z.B. --start 1200)",
+    )
     args = parser.parse_args()
 
     # Konfiguration laden
@@ -204,17 +211,29 @@ def main() -> None:
         firmen_todo = read_pending_retry(args.output)
         logger.info(f"RETRY-MODUS: {len(firmen_todo)} Firmen werden erneut verarbeitet")
     else:
-        firmen_todo = [f for f in all_firmen if f["firmenname"] not in existing]
-        skipped = len(all_firmen) - len(firmen_todo)
-        if skipped:
-            naechste = firmen_todo[0]["firmenname"] if firmen_todo else "—"
+        # --start N: ab Zeile N in der Originalliste starten (überschreibt output.csv-Prüfung)
+        if args.start is not None:
+            start_idx = max(1, args.start) - 1          # 1-basiert → 0-basiert
+            start_idx = min(start_idx, len(all_firmen)) # Nicht über die Liste hinaus
+            firmen_todo = all_firmen[start_idx:]
+            startname = firmen_todo[0]["firmenname"] if firmen_todo else "—"
             print(
-                f"\n▶  FORTSETZUNG — {skipped} von {len(all_firmen)} Firmen bereits verarbeitet.\n"
-                f"   Weiter bei: {naechste}\n"
+                f"\n▶  MANUELLER START ab Zeile {args.start} von {len(all_firmen)}\n"
+                f"   Erste Firma: {startname}\n"
             )
-            logger.info(
-                f"Fortsetzung: {skipped} bereits verarbeitet, starte bei '{naechste}'"
-            )
+            logger.info(f"Manueller Start ab Zeile {args.start}: '{startname}'")
+        else:
+            firmen_todo = [f for f in all_firmen if f["firmenname"] not in existing]
+            skipped = len(all_firmen) - len(firmen_todo)
+            if skipped:
+                naechste = firmen_todo[0]["firmenname"] if firmen_todo else "—"
+                print(
+                    f"\n▶  FORTSETZUNG — {skipped} von {len(all_firmen)} Firmen bereits verarbeitet.\n"
+                    f"   Weiter bei: {naechste}\n"
+                )
+                logger.info(
+                    f"Fortsetzung: {skipped} bereits verarbeitet, starte bei '{naechste}'"
+                )
 
     if not firmen_todo:
         print("\n✅  Alle Firmen wurden bereits verarbeitet. Nichts zu tun.\n")
@@ -236,9 +255,12 @@ def main() -> None:
         "kein_ergebnis": 0,
     }
     total = len(firmen_todo)
+    # Offset für die Anzeige: bei --start X beginnt die Anzeige bei X, sonst bei 1
+    display_offset = (args.start - 1) if (args.start is not None) else 0
 
     with ImpressumScraper(config) as scraper:
         for i, eintrag in enumerate(firmen_todo, 1):
+            display_i = display_offset + i
             # Pause-Punkt: wartet hier bis Benutzer Enter drückt (oder direkt weiter)
             _pause_flag.wait()
 
@@ -247,7 +269,7 @@ def main() -> None:
                 break
 
             firmenname = eintrag["firmenname"]
-            logger.info(f"[{i}/{total}] Verarbeite: {firmenname}")
+            logger.info(f"[{display_i}/{len(all_firmen)}] Verarbeite: {firmenname}")
 
             result = scraper.scrape(
                 firmenname,
@@ -258,7 +280,7 @@ def main() -> None:
             write_result(args.output, result, retry_mode=args.retry)
 
             logger.info(
-                f"[{i}/{total}] Fertig — Status: {result.status} | "
+                f"[{display_i}/{len(all_firmen)}] Fertig — Status: {result.status} | "
                 f"GF: {(result.geschaeftsfuehrer[:40] + '…') if len(result.geschaeftsfuehrer) > 40 else result.geschaeftsfuehrer or '-'} | "
                 f"Tel: {result.telefonnummer or '-'}"
             )
@@ -272,7 +294,7 @@ def main() -> None:
             if not result.geschaeftsfuehrer and not result.telefonnummer:
                 stats["kein_ergebnis"] += 1
 
-            print_progress(i, total, start_time)
+            print_progress(display_i, len(all_firmen), start_time)
 
     logger.info("=" * 60)
     logger.info("Impressum-Scraper beendet.")

@@ -162,6 +162,22 @@ python main.py
 python main.py --input andere_liste.csv    # andere Eingabedatei
 python main.py --output ergebnis.csv       # andere Ausgabedatei
 python main.py --retry                     # nur Firmen mit "kein Ergebnis" nochmal versuchen
+python main.py --start 1200               # direkt ab Zeile 1200 starten
+```
+
+### `--start N` — Manuell ab einer bestimmten Zeile starten
+
+Falls das Terminal geschlossen wurde oder du genau weißt bei welcher Zeilennummer du warst:
+
+```bash
+python main.py --start 1200
+# → Startet direkt bei Firma Nr. 1200 in der firmen.csv
+# → Zeigt: "MANUELLER START ab Zeile 1200 — Erste Firma: XY GmbH"
+```
+
+Die Zeilennummer siehst du während des Laufens im Terminal:
+```
+[1200/3485] Verarbeite: XY GmbH
 ```
 
 ---
