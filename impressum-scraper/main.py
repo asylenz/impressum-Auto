@@ -215,13 +215,19 @@ def main() -> None:
         if args.start is not None:
             start_idx = max(1, args.start) - 1          # 1-basiert → 0-basiert
             start_idx = min(start_idx, len(all_firmen)) # Nicht über die Liste hinaus
-            firmen_todo = all_firmen[start_idx:]
+            firmen_ab_start = all_firmen[start_idx:]
+            # Bereits verarbeitete Firmen trotzdem überspringen → keine Duplikate
+            firmen_todo = [f for f in firmen_ab_start if f["firmenname"] not in existing]
+            skipped_done = len(firmen_ab_start) - len(firmen_todo)
             startname = firmen_todo[0]["firmenname"] if firmen_todo else "—"
-            print(
+            msg = (
                 f"\n▶  MANUELLER START ab Zeile {args.start} von {len(all_firmen)}\n"
                 f"   Erste Firma: {startname}\n"
             )
-            logger.info(f"Manueller Start ab Zeile {args.start}: '{startname}'")
+            if skipped_done:
+                msg += f"   ({skipped_done} in diesem Bereich bereits verarbeitet — übersprungen)\n"
+            print(msg)
+            logger.info(f"Manueller Start ab Zeile {args.start}: '{startname}' ({skipped_done} bereits done)")
         else:
             firmen_todo = [f for f in all_firmen if f["firmenname"] not in existing]
             skipped = len(all_firmen) - len(firmen_todo)

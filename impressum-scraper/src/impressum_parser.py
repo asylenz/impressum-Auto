@@ -30,6 +30,46 @@ logger = logging.getLogger(__name__)
 # GEMINI FLASH EXTRAKTION (primär)
 # ---------------------------------------------------------------------------
 
+_GF_SNIPPET_KEYWORDS = re.compile(
+    r'(Gesch[äa]ftsf[üu]hrer|Vertreten\s+durch|Vertretungsberechtigte|'
+    r'Inhaber|Gesch[äa]ftsleitung|CEO|Vorstand)',
+    re.IGNORECASE,
+)
+
+
+def _smart_excerpt(plain_text: str, max_chars: int = 4000) -> str:
+    """
+    Gibt einen intelligenten Textausschnitt zurück der Gemini die relevanten
+    Stellen zeigt — nicht nur blind die ersten N Zeichen.
+
+    Strategie:
+      1. Erste 1500 Zeichen (Firmenname, Adresse, USt-ID — oft am Anfang)
+      2. Bereich um das erste GF-Keyword (±800 Zeichen) — kann auch am Ende stehen
+      3. Beide Teile zusammenführen, Duplikate entfernen, auf max_chars kürzen
+    """
+    if len(plain_text) <= max_chars:
+        return plain_text
+
+    intro = plain_text[:1500]
+
+    # GF-Keyword suchen — überall im Text, nicht nur in den ersten 4000 Zeichen
+    kw_match = _GF_SNIPPET_KEYWORDS.search(plain_text)
+    if kw_match:
+        kw_pos = kw_match.start()
+        window_start = max(0, kw_pos - 200)
+        window_end = min(len(plain_text), kw_pos + 800)
+        gf_window = plain_text[window_start:window_end]
+    else:
+        gf_window = ""
+
+    if gf_window and gf_window not in intro:
+        combined = intro + "\n...\n" + gf_window
+    else:
+        combined = intro
+
+    return combined[:max_chars]
+
+
 def _extract_with_gemini(plain_text: str) -> Tuple[str, str]:
     """
     Verwendet Gemini 3 Flash um GF-Name und Telefonnummer zu extrahieren.
@@ -45,8 +85,9 @@ def _extract_with_gemini(plain_text: str) -> Tuple[str, str]:
 
         client = genai.Client(api_key=api_key)
 
-        # Text auf 4000 Zeichen begrenzen (Impressum-relevanter Teil)
-        text = plain_text[:4000]
+        # Intelligenter Text-Ausschnitt:
+        # Anfang (Firmenname, Adresse) + Bereich wo GF-Keywords auftauchen
+        text = _smart_excerpt(plain_text, max_chars=4000)
 
         prompt = f"""Analysiere diesen deutschen Impressum-Text und extrahiere genau:
 
